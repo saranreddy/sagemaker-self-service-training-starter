@@ -65,3 +65,7 @@ htmlcov/
 *.log
 .mlctl/
 outputs/
+org-config.yaml
+examples/*/data/
+examples/*/local_output/
+local_output/

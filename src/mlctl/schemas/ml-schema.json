@@ -82,10 +82,5 @@
         }
       }
     },
-    "enable_preprocessing": {
-      "type": "boolean",
-      "default": false,
-      "description": "Whether to run preprocess.py before training"
-    }
   }
 }

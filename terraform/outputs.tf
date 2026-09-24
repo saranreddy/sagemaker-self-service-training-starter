@@ -28,21 +28,19 @@ output "org_config_yaml" {
   value       = <<-EOT
     # org-config.yaml - Generated from Terraform outputs
     # Place this file at the project root, ~/.mlctl/, or /etc/mlctl/
+    # Image URIs are resolved automatically per region - no templates needed
     
     execution_role: ${aws_iam_role.sagemaker_execution_role.arn}
     artifact_bucket: ${aws_s3_bucket.artifact_bucket.id}
     
     frameworks:
       sklearn:
-        container_uri_template: "{account}.dkr.ecr.{region}.amazonaws.com/sagemaker-scikit-learn:1.2-1-cpu-py3"
         default_instance_type: "ml.m5.large"
         version: "1.2-1"
       xgboost:
-        container_uri_template: "{account}.dkr.ecr.{region}.amazonaws.com/sagemaker-xgboost:1.7-1"
         default_instance_type: "ml.m5.large"
         version: "1.7-1"
       pytorch:
-        container_uri_template: "{account}.dkr.ecr.{region}.amazonaws.com/pytorch-training:2.1.0-cpu-py310"
         default_instance_type: "ml.m5.large"
         version: "2.1.0"
     
