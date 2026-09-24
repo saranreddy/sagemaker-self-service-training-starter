@@ -5,6 +5,8 @@
 [![CI](https://github.com/saranreddy/sagemaker-self-service-training-starter/workflows/CI/badge.svg)](https://github.com/saranreddy/sagemaker-self-service-training-starter/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+> **Note**: This is v0.1.0. The design has been validated via CI (unit tests, schema validation, local runs). The full end-to-end smoke test with live SageMaker API calls is designed for macOS/bash 3.2 and has not yet been executed on a live AWS account. Please report any issues you encounter.
+
 ## Who Is This For?
 
 This starter is for **organizations with many data scientists (20-100+) sharing a small MLOps team (2-5 engineers)**. It solves the bottleneck where:
@@ -175,8 +177,6 @@ quality_gate:
   metric: accuracy            # Must appear in metrics.json from evaluate.py
   threshold: 0.90
   direction: maximize         # maximize | minimize
-
-enable_preprocessing: false   # (optional) Run preprocess.py before training
 ```
 
 ## The `train.py` and `evaluate.py` Contract
@@ -210,12 +210,11 @@ The quality gate reads the specified metric from this file.
 
 1. **`mlctl submit`** uploads your code and `ml.yaml` to S3
 2. **Pipeline is created/updated** using the shared template:
-   - **[Optional] PreprocessData**: Processing job running `preprocess.py`
-   - **TrainModel**: Training job running `train.py` with your hyperparameters
+   - **TrainModel**: Training job running `train.py` with your hyperparameters in SageMaker script mode
    - **EvaluateModel**: Processing job running `evaluate.py`, produces `metrics.json`
    - **QualityGateCheck**: ConditionStep reading the metric from `metrics.json`
-     - **Pass** → **RegisterModel**: Create model package version as `PendingManualApproval`, attach evaluation metrics, git commit, ml.yaml, tags
-     - **Fail** → **QualityGateFailed**: Fail step with clear message
+     - **Pass** → **RegisterModel**: Create model package version as `PendingManualApproval`, attach evaluation metrics, git commit, ml.yaml metadata, tags
+     - **Fail** → **QualityGateFailed**: Fail step with clear message including the actual metric value
 3. **Pipeline execution starts** and you monitor via `mlctl status` / `mlctl logs`
 
 ## Frameworks and Containers (v0.1.0)
@@ -226,7 +225,7 @@ The quality gate reads the specified metric from this file.
 | `xgboost`    | `sagemaker-xgboost:1.7-1`                                     | CPU      |
 | `pytorch`    | `pytorch-training:2.1.0-cpu-py310`                            | CPU      |
 
-GPU instances (e.g., `ml.g4dn.xlarge`) are supported if your team's allowlist permits them. The container selection logic is in `org-config.yaml`.
+GPU instances (e.g., `ml.g4dn.xlarge`) are supported if your team's allowlist permits them. Container URIs are resolved dynamically based on framework and region using the AWS Deep Learning Container account IDs. PyTorch uses a separate inference image URI for model registration.
 
 ## Cost
 
@@ -301,20 +300,23 @@ make destroy
 
 This runs `scripts/pre-destroy.sh` to clean up:
 
-- SageMaker pipelines
-- Model packages and model package groups
-- S3 objects in the artifact bucket
-- CloudWatch log streams (only project-specific streams; log groups remain)
+- SageMaker pipelines **tagged with** `Project=sagemaker-self-service-training`
+- Model packages and model package groups **tagged with** the project tag
+- Running pipeline executions are stopped first
 
 Then runs `terraform destroy`.
 
-**Note**: SageMaker training and processing **job records** cannot be deleted. They remain visible in the console history but do not incur charges.
+**Important Notes**:
+- `pre-destroy.sh` only deletes resources tagged for this project or recorded by name during smoke tests
+- SageMaker training and processing **job records** cannot be deleted via API. They remain visible in the console history but do not incur charges.
+- CloudWatch log streams in `/aws/sagemaker/TrainingJobs` and `/aws/sagemaker/ProcessingJobs` are **shared account-wide**. The smoke test deletes its own log streams by name; `pre-destroy.sh` does not touch these shared log groups to avoid affecting other users' jobs.
 
 ## v0.1.0 Scope Exclusions
 
 The following are **intentionally excluded** from v0.1.0 and may appear in future releases:
 
 - **Deployment**: Models stop at `PendingManualApproval`. Deployment to endpoints is separate.
+- **Preprocessing step**: `preprocess.py` is not included in v0.1.0. Data preprocessing is expected to be done before uploading to S3, or within `train.py`.
 - **Hyperparameter tuning**: No `HyperparameterTuner` step.
 - **Distributed/multi-GPU training**: Single-node jobs only.
 - **SageMaker Feature Store**: Not integrated.
@@ -322,15 +324,15 @@ The following are **intentionally excluded** from v0.1.0 and may appear in futur
 - **Model explainability**: No Clarify integration.
 - **Notebook conversion**: Bring a `.py` script, not a `.ipynb`.
 - **Built-in algorithms**: Framework containers (sklearn, xgboost, pytorch) only; no built-in image classification, etc.
-- **Custom Docker images**: Uses AWS Deep Learning Containers; custom images require org-config edits.
+- **Custom Docker images**: Uses AWS Deep Learning Containers; custom images require code changes to `src/mlctl/image_uris.py`.
 
 ## Examples
 
 Three complete working examples are included in `examples/`:
 
-1. **`sklearn-iris/`**: Random Forest classifier on synthetic Iris-like data (accuracy ≥ 0.90)
-2. **`xgboost-boston/`**: XGBoost regression on synthetic Boston Housing-like data (RMSE ≤ 5.0)
-3. **`pytorch-mnist/`**: CNN on synthetic MNIST-like data (accuracy ≥ 0.95)
+1. **`sklearn-iris/`**: Random Forest classifier on synthetic Iris-like data (quality gate: accuracy ≥ 0.75)
+2. **`xgboost-boston/`**: XGBoost regression on synthetic Boston Housing-like data (quality gate: RMSE ≤ 5.0)
+3. **`pytorch-mnist/`**: CNN on synthetic class-separable MNIST-like image data (quality gate: accuracy ≥ 0.95)
 
 Each includes:
 
@@ -403,7 +405,7 @@ Trade-off: We lose the SDK's helper methods. We accept this for the stability an
 
 Docker-based SageMaker local mode is powerful but adds setup friction (Docker Desktop on Mac, etc.). Most data scientists want to quickly test on a small sample. Plain Python with `SM_*` env vars achieves this with zero Docker dependencies.
 
-Docker-based local mode is available via `mlctl run --docker` (not yet implemented in v0.1.0 but stubbed).
+Docker-based local mode (`mlctl run --docker`) is not implemented in v0.1.0; the flag is accepted but defaults to plain Python mode.
 
 ### Why Stop at the Model Registry?
 
@@ -416,16 +418,19 @@ Deployment strategies vary wildly:
 
 Rather than build one opinionated deployment path, we stop at `PendingManualApproval` and let each org wire up their deployment automation separately.
 
-## Known Risks for the Live Smoke Test
+## Known Considerations for the Live Smoke Test
 
-The smoke test requires:
+The smoke test (`make smoke`) is designed for **macOS with bash 3.2** (also works on Linux with bash 4+) and requires:
 
-- **Valid AWS credentials** with permissions to SageMaker, S3, IAM (read-only for `sts:GetCallerIdentity`)
+- **Valid AWS credentials** with permissions to SageMaker, S3, IAM (read-only for `sts:GetCallerIdentity`), CloudWatch Logs
 - **Deployed infrastructure** (`make apply` must succeed first)
-- **Region us-east-1** (or edit `smoke-test.sh` for other regions)
-- **~10 minutes** for pipeline executions (2 pipelines: one pass, one fail)
+- **Region us-east-1** (or edit `terraform/terraform.tfvars` to change region; `smoke-test.sh` reads from Terraform outputs)
+- **~10-15 minutes** for pipeline executions (2 pipelines: one pass with threshold 0.70, one fail with impossible threshold 1.01)
+- **`jq` installed** for JSON parsing of `mlctl submit --output json`
 
-If the AWS account is the **root user**, it cannot `sts:AssumeRole`, so the Terraform design passes the execution role to SageMaker (which does not require the caller to assume it). This is tested and works.
+**Root user compatibility**: If the deployer is the AWS account **root user**, they cannot `sts:AssumeRole`. The Terraform design passes the execution role ARN to SageMaker (which does not require the caller to assume it), so this works correctly.
+
+**Cleanup**: The smoke test runs cleanup on exit (success or failure) and deletes only the resources it created: pipelines, model packages, model package groups, S3 prefixes, and log streams by job name. It does not affect other projects or pipelines in the account.
 
 ## Contributing
 
