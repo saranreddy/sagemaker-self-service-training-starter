@@ -520,12 +520,12 @@ def test_compare_with_sdk_oracle(mock_config, ml_config, temp_project_dir):
     ]
 
     # PropertyFiles might be at step level or in Arguments depending on SDK version
-    our_pf = our_processing.get("PropertyFiles") or our_processing.get("Arguments", {}).get(
-        "PropertyFiles"
-    )
-    sdk_pf = sdk_processing.get("PropertyFiles") or sdk_processing.get("Arguments", {}).get(
-        "PropertyFiles"
-    )
+    our_pf = our_processing.get("PropertyFiles") or our_processing.get(
+        "Arguments", {}
+    ).get("PropertyFiles")
+    sdk_pf = sdk_processing.get("PropertyFiles") or sdk_processing.get(
+        "Arguments", {}
+    ).get("PropertyFiles")
 
     assert our_pf is not None, "Our processing step missing PropertyFiles"
     assert sdk_pf is not None, "SDK processing step missing PropertyFiles"
