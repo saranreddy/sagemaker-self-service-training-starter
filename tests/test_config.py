@@ -88,7 +88,7 @@ def test_resolve_inference_image_uri_pytorch():
     assert "763104351884" in training_uri  # PyTorch account (same for all regions)
 
 
-def test_image_uri_override_string():
+def test_image_uri_override_string(tmp_path):
     """Test org-config image URI override with string URI."""
     training_image = (
         "123456789012.dkr.ecr.us-east-1.amazonaws.com/custom-sklearn:latest"
@@ -109,7 +109,13 @@ def test_image_uri_override_string():
         },
     }
 
-    config = Config(config_data)
+    # Write config to temp file
+    config_file = tmp_path / "org-config.yaml"
+    import yaml
+    with open(config_file, "w") as f:
+        yaml.dump(config_data, f)
+
+    config = Config(str(config_file))
 
     training_uri = config.resolve_training_image_uri("sklearn", "us-east-1")
     inference_uri = config.resolve_inference_image_uri("sklearn", "us-east-1")
@@ -118,7 +124,7 @@ def test_image_uri_override_string():
     assert inference_uri == inference_image
 
 
-def test_image_uri_override_region_map():
+def test_image_uri_override_region_map(tmp_path):
     """Test org-config image URI override with region map."""
     us_image = "123456789012.dkr.ecr.us-east-1.amazonaws.com/custom-xgboost:latest"
     eu_image = "123456789012.dkr.ecr.eu-west-1.amazonaws.com/custom-xgboost:latest"
@@ -136,13 +142,20 @@ def test_image_uri_override_region_map():
         },
     }
 
-    config = Config(config_data)
+    # Write config to temp file
+    config_file = tmp_path / "org-config.yaml"
+    import yaml
+    with open(config_file, "w") as f:
+        yaml.dump(config_data, f)
+
+    config = Config(str(config_file))
 
     us_uri = config.resolve_training_image_uri("xgboost", "us-east-1")
     eu_uri = config.resolve_training_image_uri("xgboost", "eu-west-1")
-    fallback_uri = config.resolve_training_image_uri("xgboost", "ap-south-1")
+    # Test fallback to default for a region not in the override map (ap-northeast-1)
+    fallback_uri = config.resolve_training_image_uri("xgboost", "ap-northeast-1")
 
     assert us_uri == us_image
     assert eu_uri == eu_image
-    # Falls back to default for ap-south-1
-    assert "141502667606" in fallback_uri
+    # Falls back to default for ap-northeast-1
+    assert "683313688378" in fallback_uri

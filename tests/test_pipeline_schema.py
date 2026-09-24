@@ -4,6 +4,7 @@ import json
 import tempfile
 from pathlib import Path
 
+import yaml
 import pytest
 
 try:
@@ -610,7 +611,15 @@ def test_deployment_tags_in_pipeline():
         "artifact_bucket": "test-bucket",
         "deployment_tag": {"custom:tag": "custom-value"},
     }
-    custom_config = Config(custom_config_data)
+
+    # Write custom config to temp file
+    import tempfile
+    import yaml
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+        yaml.dump(custom_config_data, f)
+        custom_config_file = f.name
+
+    custom_config = Config(custom_config_file)
     builder2 = PipelineBuilder(custom_config, ml_config, "us-east-1")
     builder2.code_s3_prefix = "s3://bucket/code/test/abc123"
     tags2 = builder2._build_tags()
