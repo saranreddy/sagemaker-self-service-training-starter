@@ -150,7 +150,8 @@ class PipelineBuilder:
         eval_image = get_training_image_uri(self.ml_config["framework"], self.region)
         execution_role = self.config.get_execution_role(self.ml_config.get("team"))
         artifact_bucket = self._get_artifact_bucket()
-        code_s3_prefix = self._get_code_s3_prefix()
+        # Use provided s3_prefix (set by submit.py) or generate default
+        code_s3_prefix = self.code_s3_prefix or self._get_default_code_s3_prefix()
 
         eval_output_path = {
             "Std:Join": {
