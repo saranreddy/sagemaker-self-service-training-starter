@@ -112,6 +112,7 @@ def test_image_uri_override_string(tmp_path):
     # Write config to temp file
     config_file = tmp_path / "org-config.yaml"
     import yaml
+
     with open(config_file, "w") as f:
         yaml.dump(config_data, f)
 
@@ -145,6 +146,7 @@ def test_image_uri_override_region_map(tmp_path):
     # Write config to temp file
     config_file = tmp_path / "org-config.yaml"
     import yaml
+
     with open(config_file, "w") as f:
         yaml.dump(config_data, f)
 
