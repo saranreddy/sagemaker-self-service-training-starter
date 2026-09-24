@@ -22,7 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Model registration as PendingManualApproval after passing quality gate
 - Standalone Terraform infrastructure (execution role with least privilege, S3 bucket, no account-wide log groups, deployment-scoped cleanup tags)
 - Integration with sagemaker-multi-team-platform-starter via `import-platform-config.py` script (reads `team_details`, requires `--allowlist`)
-- Org-level configuration for framework image URIs (overridable), instance allowlists, deployment tags, and team settings
+- Org-level configuration for framework image URIs (overridable per framework in org-config), instance allowlists, deployment tags, and team settings
 - Dynamic image URI resolution by framework and region (sklearn/xgboost accounts vary by region, PyTorch uses 763104351884)
 - Three working example projects with synthetic data generation:
   - sklearn-iris: RandomForest classification (quality gate: accuracy ≥ 0.75)
@@ -35,16 +35,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Per-project model package groups with automatic tagging (deployment-scoped) and creation before pipeline operations
 - CloudWatch log streaming for training jobs
 - Pipeline status tracking and execution listing
-- Unit tests with real SageMaker Python SDK v2 oracle comparison (dev dependency only)
+- Unit tests with real SageMaker Python SDK v2 oracle comparison of pipeline structure (dev dependency only)
 
 ### Implementation Details
 - Pipeline definitions generated directly with boto3 for stability and testability
 - Code packaging into sourcedir.tar.gz, evaluation.tar.gz, and ml.yaml upload
-- S3 paths based on tarball content hash (not just git commit) for uncommitted edits / no-git scenarios
-- IAM role includes sagemaker:AddTags; execution role has pipeline create/update/start but not delete
+- S3 paths unique per submit (hash of freshly built archives) for uncommitted edits / no-git scenarios
+- IAM role includes sagemaker:AddTags; execution role does NOT have pipeline create/update/start (caller credentials used)
 - Deployment-scoped tagging (`mlctl:deployment`) for safe pre-destroy cleanup across accounts
-- pre-destroy.sh deletes resources by deployment tag, collects job names before pipeline deletion, removes log streams
-- smoke-test.sh cleanup runs on success and failure, uses EXIT trap, bash 3.2 safe (no unbound empty arrays)
+- pre-destroy.sh deletes resources by deployment tag, collects job names before pipeline deletion, waits for stopped executions, removes log streams
+- smoke-test.sh cleanup runs on success and failure, uses EXIT trap, records per-execution S3 prefixes only, bash 3.2/5.x compatible
 - Terraform lock file regenerated with multi-platform hashes (darwin_arm64, darwin_amd64, linux_amd64, linux_arm64)
 
 ### Known Limitations
@@ -52,4 +52,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Preprocessing step (`preprocess.py`) is not included; data prep is expected before S3 upload or within train.py
 - Full end-to-end smoke test designed for macOS/bash 3.2 but not yet executed on live AWS account
 - Training and processing job records cannot be deleted via API (remain in console history, no cost)
-- Execution role retains pipeline create/update/start permissions (needed for pipeline operation)
+- Caller (data scientist) needs pipeline create/update/start, model package group create/describe, S3 put, and iam:PassRole permissions (root user has these by default)

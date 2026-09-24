@@ -65,13 +65,8 @@ jobs:
           pip install -e .
           pip install -r requirements-dev.txt
       
-      - name: Lint with flake8
-        run: |
-          flake8 src/mlctl/ tests/ --count --select=E9,F63,F7,F82 --show-source --statistics
-          flake8 src/mlctl/ tests/ --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-      
-      - name: Check formatting with black
-        run: black --check src/mlctl/ tests/
+      - name: Lint (flake8 and black)
+        run: make lint
       
       - name: Run unit tests
         run: pytest tests/ -v --cov=mlctl --cov-report=term-missing

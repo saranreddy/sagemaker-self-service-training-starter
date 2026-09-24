@@ -572,3 +572,156 @@ def test_image_uri_override_in_pipeline():
     assert (
         custom_inference_image in pipeline_json_str
     ), "Custom inference image not found in RegisterModel step"
+
+
+def test_deployment_tags_in_pipeline():
+    """Test that deployment tags appear in pipeline definition."""
+    # Test with default config
+    default_config = Config()
+    ml_config = {
+        "name": "test-tags",
+        "team": "test-team",
+        "framework": "sklearn",
+        "instance_type": "ml.m5.large",
+        "data": {
+            "train": "s3://bucket/data/train",
+            "validation": "s3://bucket/data/validation",
+        },
+        "hyperparameters": {"max_depth": 5},
+        "quality_gate": {
+            "metric": "accuracy",
+            "threshold": 0.8,
+            "direction": "higher_is_better",
+        },
+    }
+
+    builder = PipelineBuilder(default_config, ml_config, "us-east-1")
+    builder.code_s3_prefix = "s3://bucket/code/test/abc123"
+    tags = builder._build_tags()
+
+    # Should have deployment tag
+    deployment_tags = [
+        t for t in tags if t["Key"] == "mlctl:deployment"
+    ]
+    assert len(deployment_tags) == 1
+    assert deployment_tags[0]["Value"] == "sagemaker-self-service-training"
+
+    # Test with custom deployment tag in org-config
+    custom_config_data = {
+        "execution_role": "arn:aws:iam::123456789012:role/test",
+        "artifact_bucket": "test-bucket",
+        "deployment_tag": {"custom:tag": "custom-value"},
+    }
+    custom_config = Config(custom_config_data)
+    builder2 = PipelineBuilder(custom_config, ml_config, "us-east-1")
+    builder2.code_s3_prefix = "s3://bucket/code/test/abc123"
+    tags2 = builder2._build_tags()
+
+    custom_tags = [t for t in tags2 if t["Key"] == "custom:tag"]
+    assert len(custom_tags) == 1
+    assert custom_tags[0]["Value"] == "custom-value"
+
+
+def test_no_tags_in_register_model():
+    """Test that RegisterModel step does not have Tags argument."""
+    config = Config()
+    ml_config = {
+        "name": "test-notags",
+        "team": "test-team",
+        "framework": "sklearn",
+        "instance_type": "ml.m5.large",
+        "data": {
+            "train": "s3://bucket/data/train",
+            "validation": "s3://bucket/data/validation",
+        },
+        "hyperparameters": {"max_depth": 5},
+        "quality_gate": {
+            "metric": "accuracy",
+            "threshold": 0.8,
+            "direction": "higher_is_better",
+        },
+    }
+
+    builder = PipelineBuilder(config, ml_config, "us-east-1")
+    builder.code_s3_prefix = "s3://bucket/code/test/abc123"
+    pipeline_def = builder.build_pipeline_definition()
+
+    # Find RegisterModel in conditional branches
+    condition_step = [
+        s for s in pipeline_def["Steps"] if s["Type"] == "Condition"
+    ][0]
+    if_steps = condition_step["Arguments"].get("IfSteps", [])
+    register_step = [s for s in if_steps if s["Type"] == "RegisterModel"][0]
+
+    # RegisterModel should not have Tags
+    assert "Tags" not in register_step["Arguments"]
+
+
+def test_ml_yaml_uri_in_metadata():
+    """Test that MlYamlS3Uri appears when ml_yaml_uri is set."""
+    config = Config()
+    ml_config = {
+        "name": "test-mlyaml",
+        "team": "test-team",
+        "framework": "sklearn",
+        "instance_type": "ml.m5.large",
+        "data": {
+            "train": "s3://bucket/data/train",
+            "validation": "s3://bucket/data/validation",
+        },
+        "hyperparameters": {"max_depth": 5},
+        "quality_gate": {
+            "metric": "accuracy",
+            "threshold": 0.8,
+            "direction": "higher_is_better",
+        },
+    }
+
+    builder = PipelineBuilder(config, ml_config, "us-east-1")
+    builder.code_s3_prefix = "s3://bucket/code/test/abc123"
+    builder.ml_yaml_uri = "s3://bucket/code/test/abc123/ml.yaml"
+    pipeline_def = builder.build_pipeline_definition()
+
+    # Find RegisterModel and check CustomerMetadataProperties
+    pipeline_json_str = json.dumps(pipeline_def)
+    assert "MlYamlS3Uri" in pipeline_json_str
+    assert "s3://bucket/code/test/abc123/ml.yaml" in pipeline_json_str
+
+
+def test_evaluate_container_entrypoint():
+    """Test that evaluate step has correct ContainerEntrypoint."""
+    config = Config()
+    ml_config = {
+        "name": "test-eval-entry",
+        "team": "test-team",
+        "framework": "sklearn",
+        "instance_type": "ml.m5.large",
+        "data": {
+            "train": "s3://bucket/data/train",
+            "validation": "s3://bucket/data/validation",
+        },
+        "hyperparameters": {"max_depth": 5},
+        "quality_gate": {
+            "metric": "accuracy",
+            "threshold": 0.8,
+            "direction": "higher_is_better",
+        },
+    }
+
+    builder = PipelineBuilder(config, ml_config, "us-east-1")
+    builder.code_s3_prefix = "s3://bucket/code/test/abc123"
+    pipeline_def = builder.build_pipeline_definition()
+
+    # Find Processing step
+    processing_step = [
+        s for s in pipeline_def["Steps"] if s["Type"] == "Processing"
+    ][0]
+
+    entrypoint = processing_step["Arguments"]["AppSpecification"][
+        "ContainerEntrypoint"
+    ]
+
+    # Should extract tar and execute entrypoint
+    assert "/bin/bash" in entrypoint
+    assert "tar -xzf evaluation.tar.gz" in " ".join(entrypoint)
+    assert "evaluate_entrypoint.sh" in " ".join(entrypoint)

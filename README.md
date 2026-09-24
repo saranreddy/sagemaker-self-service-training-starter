@@ -79,7 +79,7 @@ One `ml.yaml` file declares the project. No pipeline code to maintain.
    python scripts/import-platform-config.py outputs.json > org-config.yaml
    ```
 
-   This reads the platform's team roles, buckets, and allowlists and generates the corresponding `org-config.yaml` automatically.
+   This reads the platform's team roles and buckets and generates the corresponding `org-config.yaml` (allowlists come from `--allowlist` argument or defaults, not from the platform).
 
 4. **Run smoke tests** (validates the live infrastructure):
 
@@ -229,7 +229,7 @@ GPU instances (e.g., `ml.g4dn.xlarge`) are supported if your team's allowlist pe
 Container images are resolved per framework and region:
 - **sklearn/xgboost**: AWS-provided SageMaker containers (account varies by region)
 - **pytorch**: AWS Deep Learning Container (account 763104351884, all regions)
-- **Custom images**: Override in `org-config.yaml` under `frameworks.<framework>.training_image` and `inference_image`
+- **Custom images**: Override per framework in `org-config.yaml` under `frameworks.<framework>.training_image` and `inference_image` (string URI or {region: uri} map)
 
 PyTorch uses a separate inference image for model registration.
 
@@ -309,7 +309,7 @@ This runs `scripts/pre-destroy.sh` to clean up:
 - SageMaker pipelines **tagged with the deployment-scoped tag** (e.g., `mlctl:deployment=sagemaker-self-service-training`)
 - Model packages and model package groups **tagged with the deployment tag**
 - CloudWatch log streams for jobs from tagged pipelines (in `/aws/sagemaker/TrainingJobs` and `/aws/sagemaker/ProcessingJobs`)
-- Running pipeline executions are stopped first and waited for before deletion
+- Running pipeline executions are stopped; `pre-destroy.sh` waits for them to reach terminal state
 
 Then runs `terraform destroy`.
 
@@ -382,8 +382,8 @@ Projects with `team: data-science` will automatically use the data-science team'
 ### Running Tests
 
 ```bash
-make test    # Python unit tests
-make lint    # flake8 and black
+make test    # Python unit tests (pytest)
+make lint    # flake8 and black (requires passing to merge)
 ```
 
 ### CI
@@ -427,9 +427,17 @@ Rather than build one opinionated deployment path, we stop at `PendingManualAppr
 
 ## Known Considerations for the Live Smoke Test
 
-The smoke test (`make smoke`) is designed for **macOS with bash 3.2** (also works on Linux with bash 4+) and requires:
+The smoke test (`make smoke`) is designed for **macOS with bash 3.2** (also works on Linux with bash 3.2+, including 5.x) and requires:
 
-- **Valid AWS credentials** with permissions to SageMaker, S3, IAM (read-only for `sts:GetCallerIdentity`), CloudWatch Logs
+- **Valid AWS credentials** with the following permissions:
+  - `sagemaker:DescribePipeline`, `sagemaker:CreatePipeline`, `sagemaker:UpdatePipeline`, `sagemaker:StartPipelineExecution`
+  - `sagemaker:DescribeModelPackageGroup`, `sagemaker:CreateModelPackageGroup`, `sagemaker:AddTags`
+  - `s3:PutObject` on the artifact bucket
+  - `iam:PassRole` on the execution role
+  - `sts:GetCallerIdentity` (read-only)
+  - `logs:DescribeLogStreams` (for smoke test cleanup)
+  
+  Note: The AWS account **root user** has all these permissions by default
 - **Deployed infrastructure** (`make apply` must succeed first)
 - **Region us-east-1** (or edit `terraform/terraform.tfvars` to change region; `smoke-test.sh` reads from Terraform outputs)
 - **~10-15 minutes** for pipeline executions (2 pipelines: one pass with threshold 0.70, one fail with impossible threshold 1.01)
@@ -437,7 +445,7 @@ The smoke test (`make smoke`) is designed for **macOS with bash 3.2** (also work
 
 **Root user compatibility**: If the deployer is the AWS account **root user**, they cannot `sts:AssumeRole`. The Terraform design passes the execution role ARN to SageMaker (which does not require the caller to assume it), so this works correctly.
 
-**Cleanup**: The smoke test runs cleanup on both success and failure via an EXIT trap. It deletes only the resources it created: pipelines, model packages, model package groups, all S3 prefixes (including `smoke-test/`, `code/<project>/`, `pipelines/`), and log streams by job name. It does not affect other projects or pipelines in the account.
+**Cleanup**: The smoke test runs cleanup on both success and failure via an EXIT trap. It deletes only the resources it created: pipelines, model packages, model package groups, S3 prefixes (`smoke-test/`, `code/<project>/`, and per-execution `pipelines/<execId>/`), and log streams by job name. It does not affect other projects or pipelines in the account.
 
 ## Contributing
 

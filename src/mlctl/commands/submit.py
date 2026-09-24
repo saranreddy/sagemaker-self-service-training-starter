@@ -34,11 +34,32 @@ def submit(project_dir: str, org_config: str, skip_validation: bool, output: str
     if not skip_validation:
         if output == "text":
             console.print("[bold]Validating project...[/bold]")
+        else:
+            # Use stderr console for validation output in JSON mode
+            from rich.console import Console as RichConsole
+
+            validation_console = RichConsole(stderr=True)
+            # Temporarily replace global console
+            import mlctl.validation as validation_module
+
+            original_console = validation_module.console
+            validation_module.console = validation_console
+
         validator = ProjectValidator(config, project_dir, offline=False)
-        if not validator.validate_all():
+        validation_passed = validator.validate_all()
+
+        if output == "json" and not skip_validation:
+            # Restore original console
+            validation_module.console = original_console
+
+        if not validation_passed:
             if output == "text":
                 console.print(
                     "\n[red]Validation failed. Fix errors before submitting.[/red]"
+                )
+            else:
+                print(
+                    json.dumps({"error": "validation failed"}), file=sys.stderr
                 )
             sys.exit(1)
         if output == "text":
@@ -46,9 +67,19 @@ def submit(project_dir: str, org_config: str, skip_validation: bool, output: str
 
     ml_config = config.load_project_config(project_dir)
 
-    sts_client = boto3.client("sts")
-    identity = sts_client.get_caller_identity()
-    account = identity["Account"]
+    try:
+        sts_client = boto3.client("sts")
+        identity = sts_client.get_caller_identity()
+        account = identity["Account"]
+    except Exception as e:
+        if output == "json":
+            print(
+                json.dumps({"error": f"AWS credentials error: {str(e)}"}),
+                file=sys.stderr,
+            )
+        else:
+            console.print(f"[red]AWS credentials error: {e}[/red]")
+        sys.exit(1)
 
     session = boto3.session.Session()
     region = session.region_name or "us-east-1"

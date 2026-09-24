@@ -50,9 +50,17 @@ test: venv
 	@echo "Running unit tests..."
 	@./venv/bin/pytest tests/ -v
 
-lint: venv
+lint:
 	@echo "Running flake8..."
-	@./venv/bin/flake8 src/mlctl/ tests/ --max-line-length=100 --extend-ignore=E203,W503
+	@if [ -d venv ]; then \
+		./venv/bin/flake8 src tests; \
+	else \
+		flake8 src tests; \
+	fi
 	@echo "Running black check..."
-	@./venv/bin/black --check src/mlctl/ tests/
+	@if [ -d venv ]; then \
+		./venv/bin/black --check src tests; \
+	else \
+		black --check src tests; \
+	fi
 	@echo "Linting complete"
