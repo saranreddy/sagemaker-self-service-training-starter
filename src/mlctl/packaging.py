@@ -114,9 +114,9 @@ def upload_code_packages(
     s3_prefix: str,
     region: str,
 ) -> Dict[str, str]:
-    """Package and upload training and evaluation code to S3.
+    """Package and upload training and evaluation code plus ml.yaml to S3.
 
-    Returns dict with S3 URIs for sourcedir and evaluation packages.
+    Returns dict with S3 URIs for sourcedir, evaluation packages, and ml.yaml.
     """
     s3_client = boto3.client("s3", region_name=region)
 
@@ -132,7 +132,14 @@ def upload_code_packages(
     s3_client.upload_file(str(evaluation_path), s3_bucket, evaluation_key)
     evaluation_uri = f"s3://{s3_bucket}/{evaluation_key}"
 
+    # Upload ml.yaml
+    ml_yaml_path = project_dir / "ml.yaml"
+    ml_yaml_key = f"{s3_prefix}/ml.yaml"
+    s3_client.upload_file(str(ml_yaml_path), s3_bucket, ml_yaml_key)
+    ml_yaml_uri = f"s3://{s3_bucket}/{ml_yaml_key}"
+
     return {
         "sourcedir": sourcedir_uri,
         "evaluation": evaluation_uri,
+        "ml_yaml": ml_yaml_uri,
     }

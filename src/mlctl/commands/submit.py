@@ -70,25 +70,46 @@ def submit(project_dir: str, org_config: str, skip_validation: bool, output: str
     if not bucket:
         if output == "text":
             console.print("[red]Artifact bucket not configured[/red]")
+        else:
+            print(
+                json.dumps({"error": "Artifact bucket not configured"}), file=sys.stderr
+            )
         sys.exit(1)
 
     builder = PipelineBuilder(config, ml_config, region, Path(project_dir))
-    s3_prefix = builder._get_code_s3_prefix()
 
     if output == "text":
         console.print("[bold]Packaging and uploading code...[/bold]")
 
     try:
+        # Package code first to get file paths for content hashing
+        from mlctl.packaging import package_training_code, package_evaluation_code
+
+        sourcedir_path = package_training_code(Path(project_dir), ml_config["name"])
+        evaluation_path = package_evaluation_code(Path(project_dir), ml_config["name"])
+        ml_yaml_path = Path(project_dir) / "ml.yaml"
+
+        # Generate S3 prefix based on actual content
+        content_paths = [str(sourcedir_path), str(evaluation_path), str(ml_yaml_path)]
+        s3_prefix = builder.get_code_s3_prefix_for_content(content_paths)
+
+        # Now upload with the content-based prefix
         code_uris = upload_code_packages(
             Path(project_dir), ml_config["name"], bucket, s3_prefix, region
         )
+        # Set ml.yaml URI on builder for CustomerMetadataProperties
+        builder.ml_yaml_uri = code_uris["ml_yaml"]
+
         if output == "text":
             console.print(f"  [green]✓[/green] Uploaded sourcedir.tar.gz")
             console.print(f"  [green]✓[/green] Uploaded evaluation.tar.gz")
+            console.print(f"  [green]✓[/green] Uploaded ml.yaml")
             console.print()
     except Exception as e:
         if output == "text":
             console.print(f"[red]✗ Code upload failed: {e}[/red]")
+        else:
+            print(json.dumps({"error": str(e)}), file=sys.stderr)
         sys.exit(1)
 
     # Create SageMaker client
@@ -108,6 +129,11 @@ def submit(project_dir: str, org_config: str, skip_validation: bool, output: str
     except Exception as e:
         if output == "text":
             console.print(f"[red]✗ Model package group creation failed: {e}[/red]")
+        else:
+            print(
+                json.dumps({"error": f"Model package group creation failed: {e}"}),
+                file=sys.stderr,
+            )
         sys.exit(1)
 
     # Create or update pipeline
@@ -121,6 +147,11 @@ def submit(project_dir: str, org_config: str, skip_validation: bool, output: str
     except Exception as e:
         if output == "text":
             console.print(f"[red]✗ Pipeline creation/update failed: {e}[/red]")
+        else:
+            print(
+                json.dumps({"error": f"Pipeline creation/update failed: {e}"}),
+                file=sys.stderr,
+            )
         sys.exit(1)
 
     # Start pipeline execution
@@ -152,4 +183,9 @@ def submit(project_dir: str, org_config: str, skip_validation: bool, output: str
     except Exception as e:
         if output == "text":
             console.print(f"[red]✗ Pipeline execution failed: {e}[/red]")
+        else:
+            print(
+                json.dumps({"error": f"Pipeline execution failed: {e}"}),
+                file=sys.stderr,
+            )
         sys.exit(1)

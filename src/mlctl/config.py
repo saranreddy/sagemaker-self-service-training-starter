@@ -65,6 +65,7 @@ class Config:
                 "ml.c5.4xlarge",
             ],
             "required_tags": {"Project": "sagemaker-self-service-training"},
+            "deployment_tag": {"mlctl:deployment": "sagemaker-self-service-training"},
             "teams": {},
         }
 
@@ -131,3 +132,7 @@ class Config:
                 return team_config["artifact_bucket"]
 
         return self.org_config.get("artifact_bucket")
+
+    def get_deployment_tags(self) -> Dict[str, str]:
+        """Get deployment-scoped tags for resource cleanup."""
+        return self.org_config.get("deployment_tag", {})

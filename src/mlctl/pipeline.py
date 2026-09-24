@@ -26,6 +26,7 @@ class PipelineBuilder:
         self.pipeline_name = f"{ml_config['name']}-pipeline"
         self.project_name = ml_config["name"]
         self.git_commit = self._get_git_commit()
+        self.ml_yaml_uri = None  # Set by submit.py after upload
 
     def build_pipeline_definition(self) -> Dict[str, Any]:
         """Build complete pipeline definition JSON with correct schema."""
@@ -44,10 +45,6 @@ class PipelineBuilder:
             "Version": "2020-12-01",
             "Metadata": {},
             "Parameters": [],
-            "PipelineExperimentConfig": {
-                "ExperimentName": {"Get": "Execution.PipelineName"},
-                "TrialName": {"Get": "Execution.PipelineExecutionId"},
-            },
             "Steps": steps,
         }
 
@@ -222,7 +219,8 @@ class PipelineBuilder:
                     "ImageUri": eval_image,
                     "ContainerEntrypoint": [
                         "/bin/bash",
-                        "/opt/ml/processing/input/code/evaluate_entrypoint.sh",
+                        "-c",
+                        "cd /opt/ml/processing/input/code && tar -xzf evaluation.tar.gz && exec bash evaluate_entrypoint.sh",
                     ],
                 },
                 "RoleArn": execution_role,
@@ -336,6 +334,10 @@ class PipelineBuilder:
             "QualityGateDirection": self.ml_config["quality_gate"]["direction"],
         }
 
+        # Add ml.yaml S3 URI if available
+        if self.ml_yaml_uri:
+            customer_metadata["MlYamlS3Uri"] = self.ml_yaml_uri
+
         return {
             "Name": "RegisterModel",
             "Type": "RegisterModel",
@@ -368,7 +370,6 @@ class PipelineBuilder:
                     }
                 },
                 "CustomerMetadataProperties": customer_metadata,
-                "Tags": self._build_tags(),
             },
         }
 
@@ -414,6 +415,12 @@ class PipelineBuilder:
             {"Key": "ManagedBy", "Value": "mlctl"},
         ]
 
+        # Add deployment-scoped tags for pre-destroy cleanup
+        for key, value in self.config.get_deployment_tags().items():
+            if not any(t["Key"] == key for t in tags):
+                tags.append({"Key": key, "Value": value})
+
+        # Add required tags (don't override deployment or project tags)
         for key, value in self.config.org_config.get("required_tags", {}).items():
             if not any(t["Key"] == key for t in tags):
                 tags.append({"Key": key, "Value": value})
@@ -431,10 +438,21 @@ class PipelineBuilder:
             )
         return bucket
 
-    def _get_code_s3_prefix(self) -> str:
-        """Get S3 prefix for code with content hash."""
-        code_hash = hashlib.sha256(self.git_commit.encode()).hexdigest()[:12]
-        return f"code/{self.project_name}/{self.git_commit[:8]}-{code_hash}"
+    def get_code_s3_prefix_for_content(self, content_paths: list) -> str:
+        """Get S3 prefix for code based on actual file content hashes.
+
+        Args:
+            content_paths: List of file paths to hash for uniqueness
+        """
+        hasher = hashlib.sha256()
+        for path in sorted(content_paths):
+            if Path(path).exists():
+                with open(path, "rb") as f:
+                    hasher.update(f.read())
+
+        content_hash = hasher.hexdigest()[:12]
+        git_prefix = self.git_commit[:8] if self.git_commit != "unknown" else "nogit"
+        return f"code/{self.project_name}/{git_prefix}-{content_hash}"
 
     def _get_git_commit(self) -> str:
         """Get current git commit hash."""

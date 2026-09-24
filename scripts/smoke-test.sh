@@ -14,6 +14,7 @@ declare -a CREATED_MODEL_GROUPS
 declare -a CREATED_S3_PREFIXES
 
 CLEANUP_DONE=false
+WORK_DIR=""
 
 cleanup() {
     if [ "$CLEANUP_DONE" = true ]; then
@@ -23,78 +24,115 @@ cleanup() {
     echo ""
     echo "=== Cleanup ==="
     
-    # Stop running executions
-    for exec_arn in "${CREATED_EXECUTIONS[@]}"; do
-        echo "Stopping execution: $exec_arn"
-        aws sagemaker stop-pipeline-execution --pipeline-execution-arn "$exec_arn" 2>/dev/null || true
-    done
+    # Stop running executions (bash 3.2 safe)
+    if [ ${#CREATED_EXECUTIONS[@]} -gt 0 ]; then
+        for exec_arn in "${CREATED_EXECUTIONS[@]}"; do
+            echo "Stopping execution: $exec_arn"
+            aws sagemaker stop-pipeline-execution --pipeline-execution-arn "$exec_arn" 2>/dev/null || true
+        done
+        
+        # Wait for executions to reach terminal state before deleting pipelines
+        echo "Waiting for executions to stop..."
+        for exec_arn in "${CREATED_EXECUTIONS[@]}"; do
+            local max_stop_wait=60
+            local stop_elapsed=0
+            while [ $stop_elapsed -lt $max_stop_wait ]; do
+                status=$(aws sagemaker describe-pipeline-execution \
+                    --pipeline-execution-arn "$exec_arn" \
+                    --query 'PipelineExecutionStatus' \
+                    --output text 2>/dev/null || echo "UNKNOWN")
+                
+                if [[ "$status" =~ ^(Succeeded|Failed|Stopped)$ ]]; then
+                    break
+                fi
+                
+                sleep 2
+                stop_elapsed=$((stop_elapsed + 2))
+            done
+        done
+    fi
     
     # Collect job names from pipeline executions before deleting
     declare -a JOB_NAMES
-    for exec_arn in "${CREATED_EXECUTIONS[@]}"; do
-        echo "Collecting job names from $exec_arn..."
-        steps=$(aws sagemaker list-pipeline-execution-steps \
-            --pipeline-execution-arn "$exec_arn" \
-            --query 'PipelineExecutionSteps[].Metadata' \
-            --output json 2>/dev/null || echo "[]")
-        
-        # Extract training job names
-        training_jobs=$(echo "$steps" | jq -r '.[] | select(.TrainingJob != null) | .TrainingJob.Arn' | sed 's|.*/||' || true)
-        for job in $training_jobs; do
-            [ -n "$job" ] && JOB_NAMES+=("$job")
-        done
-        
-        # Extract processing job names
-        processing_jobs=$(echo "$steps" | jq -r '.[] | select(.ProcessingJob != null) | .ProcessingJob.Arn' | sed 's|.*/||' || true)
-        for job in $processing_jobs; do
-            [ -n "$job" ] && JOB_NAMES+=("$job")
-        done
-    done
-    
-    # Delete model packages
-    for group in "${CREATED_MODEL_GROUPS[@]}"; do
-        echo "Deleting model packages in group: $group"
-        packages=$(aws sagemaker list-model-packages \
-            --model-package-group-name "$group" \
-            --query 'ModelPackageSummaryList[].ModelPackageArn' \
-            --output text 2>/dev/null || true)
-        
-        for arn in $packages; do
-            [ -n "$arn" ] && aws sagemaker delete-model-package --model-package-name "$arn" 2>/dev/null || true
-        done
-        
-        echo "Deleting model package group: $group"
-        aws sagemaker delete-model-package-group --model-package-group-name "$group" 2>/dev/null || true
-    done
-    
-    # Delete pipelines
-    for pipeline in "${CREATED_PIPELINES[@]}"; do
-        echo "Deleting pipeline: $pipeline"
-        aws sagemaker delete-pipeline --pipeline-name "$pipeline" 2>/dev/null || true
-    done
-    
-    # Delete log streams
-    for job_name in "${JOB_NAMES[@]}"; do
-        for log_group in "/aws/sagemaker/TrainingJobs" "/aws/sagemaker/ProcessingJobs"; do
-            streams=$(aws logs describe-log-streams \
-                --log-group-name "$log_group" \
-                --log-stream-name-prefix "$job_name" \
-                --query 'logStreams[].logStreamName' \
-                --output text 2>/dev/null || true)
+    if [ ${#CREATED_EXECUTIONS[@]} -gt 0 ]; then
+        for exec_arn in "${CREATED_EXECUTIONS[@]}"; do
+            echo "Collecting job names from $exec_arn..."
+            steps=$(aws sagemaker list-pipeline-execution-steps \
+                --pipeline-execution-arn "$exec_arn" \
+                --query 'PipelineExecutionSteps[].Metadata' \
+                --output json 2>/dev/null || echo "[]")
             
-            for stream in $streams; do
-                [ -n "$stream" ] && aws logs delete-log-stream \
-                    --log-group-name "$log_group" \
-                    --log-stream-name "$stream" 2>/dev/null || true
+            # Extract training job names
+            training_jobs=$(echo "$steps" | jq -r '.[] | select(.TrainingJob != null) | .TrainingJob.Arn' | sed 's|.*/||' || true)
+            for job in $training_jobs; do
+                [ -n "$job" ] && JOB_NAMES+=("$job")
+            done
+            
+            # Extract processing job names
+            processing_jobs=$(echo "$steps" | jq -r '.[] | select(.ProcessingJob != null) | .ProcessingJob.Arn' | sed 's|.*/||' || true)
+            for job in $processing_jobs; do
+                [ -n "$job" ] && JOB_NAMES+=("$job")
             done
         done
-    done
+    fi
+    
+    # Delete model packages
+    if [ ${#CREATED_MODEL_GROUPS[@]} -gt 0 ]; then
+        for group in "${CREATED_MODEL_GROUPS[@]}"; do
+            echo "Deleting model packages in group: $group"
+            packages=$(aws sagemaker list-model-packages \
+                --model-package-group-name "$group" \
+                --query 'ModelPackageSummaryList[].ModelPackageArn' \
+                --output text 2>/dev/null || true)
+            
+            for arn in $packages; do
+                [ -n "$arn" ] && aws sagemaker delete-model-package --model-package-name "$arn" 2>/dev/null || true
+            done
+            
+            echo "Deleting model package group: $group"
+            aws sagemaker delete-model-package-group --model-package-group-name "$group" 2>/dev/null || true
+        done
+    fi
+    
+    # Delete pipelines
+    if [ ${#CREATED_PIPELINES[@]} -gt 0 ]; then
+        for pipeline in "${CREATED_PIPELINES[@]}"; do
+            echo "Deleting pipeline: $pipeline"
+            aws sagemaker delete-pipeline --pipeline-name "$pipeline" 2>/dev/null || true
+        done
+    fi
+    
+    # Delete log streams
+    if [ ${#JOB_NAMES[@]} -gt 0 ]; then
+        for job_name in "${JOB_NAMES[@]}"; do
+            for log_group in "/aws/sagemaker/TrainingJobs" "/aws/sagemaker/ProcessingJobs"; do
+                streams=$(aws logs describe-log-streams \
+                    --log-group-name "$log_group" \
+                    --log-stream-name-prefix "$job_name" \
+                    --query 'logStreams[].logStreamName' \
+                    --output text 2>/dev/null || true)
+                
+                for stream in $streams; do
+                    [ -n "$stream" ] && aws logs delete-log-stream \
+                        --log-group-name "$log_group" \
+                        --log-stream-name "$stream" 2>/dev/null || true
+                done
+            done
+        done
+    fi
     
     # Delete S3 prefixes
-    for prefix in "${CREATED_S3_PREFIXES[@]}"; do
-        echo "Deleting S3 prefix: $prefix"
-        aws s3 rm "$prefix" --recursive 2>/dev/null || true
-    done
+    if [ ${#CREATED_S3_PREFIXES[@]} -gt 0 ]; then
+        for prefix in "${CREATED_S3_PREFIXES[@]}"; do
+            echo "Deleting S3 prefix: $prefix"
+            aws s3 rm "$prefix" --recursive 2>/dev/null || true
+        done
+    fi
+    
+    # Clean up work directory
+    if [ -n "$WORK_DIR" ] && [ -d "$WORK_DIR" ]; then
+        rm -rf "$WORK_DIR"
+    fi
     
     CLEANUP_DONE=true
     echo "Cleanup complete"
@@ -148,7 +186,6 @@ echo ""
 
 # Create temp work directory
 WORK_DIR=$(mktemp -d)
-trap "rm -rf $WORK_DIR" EXIT
 
 cp -r "$ROOT_DIR/examples/sklearn-iris"/* "$WORK_DIR/"
 cd "$WORK_DIR"
@@ -175,12 +212,16 @@ required_tags:
 teams: {}
 EOF
 
-export HOME="$WORK_DIR"  # Make mlctl look for config here
-
 echo "=== Test 1: Generate and upload data ==="
 python3 generate_data.py || fail "Data generation failed"
 
+PROJECT_NAME="smoke-test-iris"
+GIT_COMMIT=$(cd "$ROOT_DIR" && git rev-parse HEAD 2>/dev/null || echo "unknown")
+
+# Record ALL S3 prefixes that will be created
 CREATED_S3_PREFIXES+=("s3://$ARTIFACT_BUCKET/smoke-test/")
+CREATED_S3_PREFIXES+=("s3://$ARTIFACT_BUCKET/code/$PROJECT_NAME/")
+CREATED_S3_PREFIXES+=("s3://$ARTIFACT_BUCKET/pipelines/")
 
 aws s3 sync data/train/ "s3://$ARTIFACT_BUCKET/smoke-test/iris/train/" --quiet || fail "S3 upload failed"
 aws s3 sync data/validation/ "s3://$ARTIFACT_BUCKET/smoke-test/iris/validation/" --quiet || fail "S3 upload failed"
@@ -190,7 +231,7 @@ echo ""
 
 # Create ml.yaml with passing threshold (with margin)
 cat > ml.yaml <<EOF
-name: smoke-test-iris
+name: $PROJECT_NAME
 team: smoke-test
 framework: sklearn
 instance_type: ml.m5.large
@@ -210,8 +251,8 @@ quality_gate:
   direction: maximize
 EOF
 
-CREATED_PIPELINES+=("smoke-test-iris-pipeline")
-CREATED_MODEL_GROUPS+=("smoke-test-iris-models")
+CREATED_PIPELINES+=("${PROJECT_NAME}-pipeline")
+CREATED_MODEL_GROUPS+=("${PROJECT_NAME}-models")
 
 echo "=== Test 2: Validate project ==="
 mlctl validate --offline || fail "Validation failed"
@@ -236,17 +277,27 @@ echo "=== Test 5: Wait for pipeline completion ==="
 MAX_WAIT=1200
 ELAPSED=0
 SLEEP_INTERVAL=30
+CONSECUTIVE_ERRORS=0
+MAX_CONSECUTIVE_ERRORS=5
 
 while [ $ELAPSED -lt $MAX_WAIT ]; do
     STATUS=$(aws sagemaker describe-pipeline-execution \
         --pipeline-execution-arn "$EXECUTION_ARN" \
         --query 'PipelineExecutionStatus' \
-        --output text 2>&1) || {
-        echo "  Transient describe error, retrying..."
-        sleep 5
-        continue
-    }
+        --output text 2>&1)
     
+    if [ $? -ne 0 ]; then
+        CONSECUTIVE_ERRORS=$((CONSECUTIVE_ERRORS + 1))
+        echo "  Transient describe error ($CONSECUTIVE_ERRORS/$MAX_CONSECUTIVE_ERRORS), retrying..."
+        if [ $CONSECUTIVE_ERRORS -ge $MAX_CONSECUTIVE_ERRORS ]; then
+            fail "Too many consecutive describe errors"
+        fi
+        sleep 5
+        ELAPSED=$((ELAPSED + 5))
+        continue
+    fi
+    
+    CONSECUTIVE_ERRORS=0
     echo "  Status: $STATUS (waited ${ELAPSED}s)"
     
     if [ "$STATUS" = "Succeeded" ]; then
@@ -265,7 +316,7 @@ echo ""
 
 echo "=== Test 6: Verify model registration ==="
 model_package=$(aws sagemaker list-model-packages \
-    --model-package-group-name "smoke-test-iris-models" \
+    --model-package-group-name "${PROJECT_NAME}-models" \
     --max-results 1 \
     --query 'ModelPackageSummaryList[0]' \
     --output json) || fail "Failed to list model packages"
@@ -281,10 +332,16 @@ echo "✓ Model approval status correct: $model_status"
 model_arn=$(echo "$model_package" | jq -r '.ModelPackageArn')
 model_details=$(aws sagemaker describe-model-package --model-package-name "$model_arn" --output json) || fail "Failed to describe model package"
 
-# Check ModelMetrics exists
+# Check ModelMetrics exists and head-object the S3 URI
 model_metrics=$(echo "$model_details" | jq '.ModelMetrics')
 [ "$model_metrics" != "null" ] || fail "ModelMetrics not found"
-echo "✓ ModelMetrics attached"
+metrics_s3_uri=$(echo "$model_details" | jq -r '.ModelMetrics.ModelQuality.Statistics.S3Uri // empty')
+if [ -n "$metrics_s3_uri" ]; then
+    echo "  Verifying metrics.json exists at $metrics_s3_uri"
+    aws s3api head-object --bucket "$ARTIFACT_BUCKET" --key "${metrics_s3_uri#s3://$ARTIFACT_BUCKET/}" >/dev/null 2>&1 || \
+        fail "metrics.json not found at $metrics_s3_uri"
+fi
+echo "✓ ModelMetrics attached and metrics.json exists"
 
 # Check CustomerMetadataProperties
 customer_metadata=$(echo "$model_details" | jq '.CustomerMetadataProperties')
@@ -293,13 +350,13 @@ customer_metadata=$(echo "$model_details" | jq '.CustomerMetadataProperties')
 git_commit=$(echo "$customer_metadata" | jq -r '.GitCommit')
 project_name=$(echo "$customer_metadata" | jq -r '.ProjectName')
 [ "$git_commit" != "null" ] || fail "GitCommit not in CustomerMetadataProperties"
-[ "$project_name" = "smoke-test-iris" ] || fail "ProjectName incorrect in CustomerMetadataProperties"
+[ "$project_name" = "$PROJECT_NAME" ] || fail "ProjectName incorrect in CustomerMetadataProperties"
 echo "✓ CustomerMetadataProperties correct (GitCommit, ProjectName, etc.)"
 echo ""
 
 echo "=== Test 7: Submit with failing quality gate ==="
 cat > ml.yaml <<EOF
-name: smoke-test-iris
+name: $PROJECT_NAME
 team: smoke-test
 framework: sklearn
 instance_type: ml.m5.large
@@ -329,17 +386,26 @@ echo ""
 
 echo "=== Test 8: Wait for quality gate failure ==="
 ELAPSED=0
+CONSECUTIVE_ERRORS=0
 
 while [ $ELAPSED -lt $MAX_WAIT ]; do
     STATUS=$(aws sagemaker describe-pipeline-execution \
         --pipeline-execution-arn "$EXECUTION_ARN_FAIL" \
         --query 'PipelineExecutionStatus' \
-        --output text 2>&1) || {
-        echo "  Transient describe error, retrying..."
-        sleep 5
-        continue
-    }
+        --output text 2>&1)
     
+    if [ $? -ne 0 ]; then
+        CONSECUTIVE_ERRORS=$((CONSECUTIVE_ERRORS + 1))
+        echo "  Transient describe error ($CONSECUTIVE_ERRORS/$MAX_CONSECUTIVE_ERRORS), retrying..."
+        if [ $CONSECUTIVE_ERRORS -ge $MAX_CONSECUTIVE_ERRORS ]; then
+            fail "Too many consecutive describe errors"
+        fi
+        sleep 5
+        ELAPSED=$((ELAPSED + 5))
+        continue
+    fi
+    
+    CONSECUTIVE_ERRORS=0
     echo "  Status: $STATUS (waited ${ELAPSED}s)"
     
     if [ "$STATUS" = "Failed" ]; then
@@ -354,12 +420,17 @@ while [ $ELAPSED -lt $MAX_WAIT ]; do
         step_status=$(echo "$steps" | jq -r '.[0].StepStatus')
         [ "$step_status" = "Failed" ] || fail "QualityGateFailed step status is $step_status, expected Failed"
         
+        # Try FailureReason first, fall back to Metadata.Fail.ErrorMessage
         failure_reason=$(echo "$steps" | jq -r '.[0].FailureReason // empty')
-        [[ "$failure_reason" =~ "accuracy" ]] || fail "FailureReason doesn't contain 'accuracy'"
-        [[ "$failure_reason" =~ "1.01" ]] || fail "FailureReason doesn't contain threshold '1.01'"
+        if [ -z "$failure_reason" ]; then
+            failure_reason=$(echo "$steps" | jq -r '.[0].Metadata.Fail.ErrorMessage // empty')
+        fi
         
-        # Extract actual value from message (it should be present due to Std:Join with Std:JsonGet)
-        # The message format is: "Quality gate failed. Metric 'accuracy' did not meet threshold 1.01 (direction: maximize). Actual value: X.XX"
+        [ -n "$failure_reason" ] || fail "No FailureReason or Metadata.Fail.ErrorMessage found"
+        [[ "$failure_reason" =~ accuracy ]] || fail "FailureReason doesn't contain 'accuracy'"
+        [[ "$failure_reason" =~ 1.01 ]] || fail "FailureReason doesn't contain threshold '1.01'"
+        [[ "$failure_reason" =~ [0-9]+\.[0-9]+ ]] || fail "FailureReason doesn't contain actual numeric value"
+        
         echo "  Failure reason: $failure_reason"
         
         echo "✓ Quality gate failed as expected with correct error message"

@@ -23,6 +23,11 @@ output "account_id" {
   value       = local.account_id
 }
 
+output "deployment_tag" {
+  description = "Deployment-scoped tag for resource cleanup (mlctl:deployment key-value)"
+  value       = "mlctl:deployment=${var.project_name}"
+}
+
 output "org_config_yaml" {
   description = "Suggested org-config.yaml content (standalone mode)"
   value       = <<-EOT
@@ -57,6 +62,9 @@ output "org_config_yaml" {
     
     required_tags:
       Project: ${var.project_name}
+    
+    deployment_tag:
+      mlctl:deployment: ${var.project_name}
     
     teams: {}
   EOT
