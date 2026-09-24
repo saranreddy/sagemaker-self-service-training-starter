@@ -275,10 +275,13 @@ def test_compare_with_sdk_oracle(mock_config, ml_config, temp_project_dir):
     from unittest.mock import patch, MagicMock
 
     # In CI, fail if SDK is not available; locally, skip gracefully
-    if os.environ.get("CI"):
-        pytest.importorskip("sagemaker")
-    elif not SDK_AVAILABLE:
-        pytest.skip("SageMaker SDK not available")
+    if not SDK_AVAILABLE:
+        if os.environ.get("CI"):
+            pytest.fail(
+                "SageMaker SDK not available in CI - required for SDK oracle test"
+            )
+        else:
+            pytest.skip("SageMaker SDK not available")
 
     # Set AWS region and fake credentials for SDK (required even for offline usage)
     os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
