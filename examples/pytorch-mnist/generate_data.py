@@ -1,4 +1,5 @@
 """Generate class-separable synthetic MNIST-like dataset for local testing."""
+
 import numpy as np
 from pathlib import Path
 
@@ -62,7 +63,9 @@ def generate_data():
                     center_y, center_x = 14, 14
                     for y_coord in range(28):
                         for x_coord in range(28):
-                            dist = np.sqrt((y_coord - center_y) ** 2 + (x_coord - center_x) ** 2)
+                            dist = np.sqrt(
+                                (y_coord - center_y) ** 2 + (x_coord - center_x) ** 2
+                            )
                             if 6 < dist < 9:
                                 img[y_coord, x_coord] = 200 + np.random.rand() * 55
 

@@ -1,4 +1,5 @@
 """Tests for config module."""
+
 import os
 import tempfile
 from pathlib import Path
@@ -36,7 +37,10 @@ def test_load_org_config():
 
         config = Config(org_config_path=str(config_path))
 
-        assert config.org_config["execution_role"] == "arn:aws:iam::123456789012:role/test-role"
+        assert (
+            config.org_config["execution_role"]
+            == "arn:aws:iam::123456789012:role/test-role"
+        )
         assert config.org_config["artifact_bucket"] == "test-bucket"
 
 

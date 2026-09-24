@@ -103,14 +103,14 @@ class Config:
     def resolve_training_image_uri(self, framework: str, region: str) -> str:
         """Resolve training image URI for framework and region."""
         from mlctl.image_uris import get_training_image_uri
-        
+
         fw_config = self.get_framework_config(framework)
         return get_training_image_uri(framework, region)
-    
+
     def resolve_inference_image_uri(self, framework: str, region: str) -> str:
         """Resolve inference image URI for framework and region."""
         from mlctl.image_uris import get_inference_image_uri
-        
+
         fw_config = self.get_framework_config(framework)
         return get_inference_image_uri(framework, region)
 

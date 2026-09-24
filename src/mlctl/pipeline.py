@@ -1,4 +1,5 @@
 """SageMaker pipeline generation with correct 2020-12-01 schema (boto3-only runtime)."""
+
 import hashlib
 import json
 import os
@@ -104,7 +105,9 @@ class PipelineBuilder:
                     "VolumeSizeInGB": 30,
                 },
                 "StoppingCondition": {
-                    "MaxRuntimeInSeconds": self.ml_config.get("max_runtime_seconds", 3600)
+                    "MaxRuntimeInSeconds": self.ml_config.get(
+                        "max_runtime_seconds", 3600
+                    )
                 },
                 "HyperParameters": hyperparameters,
                 "InputDataConfig": [
@@ -171,7 +174,9 @@ class PipelineBuilder:
             {
                 "InputName": "model",
                 "S3Input": {
-                    "S3Uri": {"Get": "Steps.TrainModel.ModelArtifacts.S3ModelArtifacts"},
+                    "S3Uri": {
+                        "Get": "Steps.TrainModel.ModelArtifacts.S3ModelArtifacts"
+                    },
                     "LocalPath": "/opt/ml/processing/model",
                     "S3DataType": "S3Prefix",
                     "S3InputMode": "File",
@@ -445,9 +450,7 @@ class PipelineBuilder:
         except Exception:
             return "unknown"
 
-    def create_or_update_pipeline(
-        self, sagemaker_client
-    ) -> str:
+    def create_or_update_pipeline(self, sagemaker_client) -> str:
         """Create or update the pipeline in SageMaker."""
         pipeline_def = self.build_pipeline_definition()
         execution_role = self.config.get_execution_role(self.ml_config.get("team"))

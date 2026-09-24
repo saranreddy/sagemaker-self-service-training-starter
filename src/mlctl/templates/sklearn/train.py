@@ -1,4 +1,5 @@
 """Scikit-learn training script for Iris classification (SageMaker script mode)."""
+
 import argparse
 import json
 import os
@@ -30,7 +31,9 @@ def parse_args():
     parser.add_argument(
         "--validation",
         type=str,
-        default=os.environ.get("SM_CHANNEL_VALIDATION", "/opt/ml/input/data/validation"),
+        default=os.environ.get(
+            "SM_CHANNEL_VALIDATION", "/opt/ml/input/data/validation"
+        ),
     )
 
     return parser.parse_args()
@@ -56,7 +59,9 @@ def main():
 
     print("\nTraining Random Forest classifier...")
     clf = RandomForestClassifier(
-        max_depth=args.max_depth, n_estimators=args.n_estimators, random_state=args.random_state
+        max_depth=args.max_depth,
+        n_estimators=args.n_estimators,
+        random_state=args.random_state,
     )
 
     clf.fit(X_train, y_train)

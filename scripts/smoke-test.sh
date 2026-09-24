@@ -219,7 +219,7 @@ echo "✓ Validation passed"
 echo ""
 
 echo "=== Test 3: Run locally ==="
-mlctl run --local || fail "Local run failed"
+mlctl run || fail "Local run failed"
 echo "✓ Local run passed"
 echo ""
 

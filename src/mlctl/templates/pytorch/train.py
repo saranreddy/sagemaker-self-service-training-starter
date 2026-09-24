@@ -1,4 +1,5 @@
 """PyTorch training script for MNIST classification (SageMaker script mode)."""
+
 import argparse
 import json
 import os
@@ -56,7 +57,9 @@ def parse_args():
     parser.add_argument(
         "--validation",
         type=str,
-        default=os.environ.get("SM_CHANNEL_VALIDATION", "/opt/ml/input/data/validation"),
+        default=os.environ.get(
+            "SM_CHANNEL_VALIDATION", "/opt/ml/input/data/validation"
+        ),
     )
 
     return parser.parse_args()

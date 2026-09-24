@@ -32,7 +32,7 @@ With this starter, a data scientist brings a working `train.py` and gets a teste
 
 1. **`mlctl init --framework sklearn`** → Working example project that runs locally
 2. **`mlctl validate`** → Instant feedback on config, scripts, S3 paths, allowlists
-3. **`mlctl run --local`** → Run training + evaluation on a local data sample (no Docker by default)
+3. **`mlctl run`** → Run training + evaluation locally on a small data sample (plain Python, no Docker)
 4. **`mlctl submit`** → Pipeline created/updated and executed; model registered if quality gate passes
 
 One `ml.yaml` file declares the project. No pipeline code to maintain.
@@ -133,7 +133,7 @@ One `ml.yaml` file declares the project. No pipeline code to maintain.
 
    ```bash
    # Generate a small sample of your data in data/train/ and data/validation/
-   mlctl run --local
+   mlctl run
    # Runs train.py then evaluate.py with SageMaker env vars, checks quality gate
    ```
 
@@ -259,7 +259,7 @@ jobs:
           python-version: '3.11'
       - run: pip install git+https://github.com/saranreddy/sagemaker-self-service-training-starter.git
       - run: mlctl validate --offline
-      - run: mlctl run --local
+      - run: mlctl run
         if: github.event_name == 'pull_request'
 
   submit:
@@ -346,7 +346,7 @@ Run any example locally:
 cd examples/sklearn-iris
 python generate_data.py
 mlctl validate --offline
-mlctl run --local
+mlctl run
 ```
 
 ## Integration with Multi-Team Platform Starter

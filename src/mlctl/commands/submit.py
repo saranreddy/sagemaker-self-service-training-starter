@@ -1,4 +1,5 @@
 """Submit pipeline to SageMaker."""
+
 import json
 import os
 import sys
@@ -19,18 +20,14 @@ console = Console()
 @click.command()
 @click.option("--project-dir", default=".", help="Project directory")
 @click.option("--org-config", help="Path to org-config.yaml")
-@click.option(
-    "--skip-validation", is_flag=True, help="Skip validation before submit"
-)
+@click.option("--skip-validation", is_flag=True, help="Skip validation before submit")
 @click.option(
     "--output",
     type=click.Choice(["text", "json"]),
     default="text",
     help="Output format",
 )
-def submit(
-    project_dir: str, org_config: str, skip_validation: bool, output: str
-):
+def submit(project_dir: str, org_config: str, skip_validation: bool, output: str):
     """Submit pipeline to SageMaker (create/update and start execution)."""
     config = Config(org_config_path=org_config)
 

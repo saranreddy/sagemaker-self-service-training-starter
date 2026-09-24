@@ -1,4 +1,5 @@
 """Run training locally."""
+
 import json
 import os
 import subprocess
@@ -80,7 +81,10 @@ def run(project_dir: str, org_config: str):
 
     try:
         subprocess.run(
-            [sys.executable, str(evaluate_script)], cwd=project_path, env=env, check=True
+            [sys.executable, str(evaluate_script)],
+            cwd=project_path,
+            env=env,
+            check=True,
         )
         console.print("[green]✓ Evaluation completed[/green]\n")
     except subprocess.CalledProcessError as e:

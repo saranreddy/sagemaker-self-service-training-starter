@@ -135,7 +135,7 @@ jobs:
       
       - name: Run locally
         working-directory: examples/sklearn-iris
-        run: mlctl run --local
+        run: mlctl run
 
   local-run-xgboost:
     name: Local Run - XGBoost Example
@@ -164,4 +164,4 @@ jobs:
       
       - name: Run locally
         working-directory: examples/xgboost-boston
-        run: mlctl run --local
+        run: mlctl run
