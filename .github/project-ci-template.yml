@@ -1,0 +1,75 @@
+# GitHub Actions CI template for ML project repos
+# Copy this to .github/workflows/ml-ci.yml in your project repo
+
+name: ML CI
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+
+jobs:
+  validate:
+    name: Validate ML Project
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install mlctl
+        run: |
+          pip install git+https://github.com/saranreddy/sagemaker-self-service-training-starter.git
+      
+      - name: Validate project configuration
+        run: |
+          mlctl validate --offline
+      
+      - name: Install project dependencies
+        run: |
+          pip install -r requirements.txt
+      
+      - name: Run local training (PR only)
+        if: github.event_name == 'pull_request'
+        run: |
+          # Generate/download a small data sample for CI
+          # python generate_data.py
+          mlctl run --local
+
+  submit:
+    name: Submit to SageMaker
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      id-token: write
+      contents: read
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/GithubActionsRole
+          aws-region: us-east-1
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install mlctl
+        run: |
+          pip install git+https://github.com/saranreddy/sagemaker-self-service-training-starter.git
+      
+      - name: Submit pipeline to SageMaker
+        run: |
+          mlctl submit
+          echo "Pipeline submitted. Check SageMaker console for execution status."

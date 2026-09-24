@@ -1,0 +1,165 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  terraform:
+    name: Terraform Validation
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.5.7
+      
+      - name: Terraform Format Check
+        working-directory: terraform
+        run: terraform fmt -check -recursive
+      
+      - name: Terraform Init
+        working-directory: terraform
+        run: terraform init -backend=false
+      
+      - name: Terraform Validate
+        working-directory: terraform
+        run: terraform validate
+      
+      - name: Setup TFLint
+        uses: terraform-linters/setup-tflint@v4
+        with:
+          tflint_version: latest
+      
+      - name: TFLint Init
+        working-directory: terraform
+        run: tflint --init
+      
+      - name: TFLint
+        working-directory: terraform
+        run: tflint --format compact
+
+  python-tests:
+    name: Python Unit Tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.10', '3.11', '3.12']
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install -r requirements-dev.txt
+      
+      - name: Lint (flake8 and black)
+        run: make lint
+      
+      - name: Shellcheck scripts
+        run: shellcheck -S error scripts/*.sh
+      
+      - name: Run unit tests
+        run: pytest tests/ -v --cov=mlctl --cov-report=term-missing
+
+  validate-examples:
+    name: Validate Example Projects
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install mlctl
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+      
+      - name: Validate sklearn example
+        working-directory: examples/sklearn-iris
+        run: |
+          mlctl validate --offline
+      
+      - name: Validate xgboost example
+        working-directory: examples/xgboost-boston
+        run: |
+          mlctl validate --offline
+      
+      - name: Validate pytorch example
+        working-directory: examples/pytorch-mnist
+        run: |
+          mlctl validate --offline
+
+  local-run-sklearn:
+    name: Local Run - Sklearn Example
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install mlctl and dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+      
+      - name: Install sklearn example dependencies
+        working-directory: examples/sklearn-iris
+        run: pip install -r requirements.txt
+      
+      - name: Generate data
+        working-directory: examples/sklearn-iris
+        run: python generate_data.py
+      
+      - name: Run locally
+        working-directory: examples/sklearn-iris
+        run: mlctl run
+
+  local-run-xgboost:
+    name: Local Run - XGBoost Example
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install mlctl and dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+      
+      - name: Install xgboost example dependencies
+        working-directory: examples/xgboost-boston
+        run: pip install -r requirements.txt
+      
+      - name: Generate data
+        working-directory: examples/xgboost-boston
+        run: python generate_data.py
+      
+      - name: Run locally
+        working-directory: examples/xgboost-boston
+        run: mlctl run
