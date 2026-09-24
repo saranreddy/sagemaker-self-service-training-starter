@@ -5,7 +5,7 @@ import json
 import os
 import subprocess
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any, Dict
 
 from botocore.exceptions import ClientError
 
@@ -218,7 +218,7 @@ class PipelineBuilder:
                     "ContainerEntrypoint": [
                         "/bin/bash",
                         "-c",
-                        "cd /opt/ml/processing/input/code && tar -xzf evaluation.tar.gz && exec bash evaluate_entrypoint.sh",
+                        "cd /opt/ml/processing/input/code && tar -xzf evaluation.tar.gz && exec bash evaluate_entrypoint.sh",  # noqa: E501
                     ],
                 },
                 "RoleArn": execution_role,
@@ -430,7 +430,7 @@ class PipelineBuilder:
             bucket = os.environ.get("MLCTL_ARTIFACT_BUCKET")
         if not bucket:
             raise ValueError(
-                "Artifact bucket not configured. Set in org-config.yaml or MLCTL_ARTIFACT_BUCKET env var."
+                "Artifact bucket not configured. Set in org-config.yaml or MLCTL_ARTIFACT_BUCKET env var."  # noqa: E501
             )
         return bucket
 

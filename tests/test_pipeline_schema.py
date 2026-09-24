@@ -600,9 +600,7 @@ def test_deployment_tags_in_pipeline():
     tags = builder._build_tags()
 
     # Should have deployment tag
-    deployment_tags = [
-        t for t in tags if t["Key"] == "mlctl:deployment"
-    ]
+    deployment_tags = [t for t in tags if t["Key"] == "mlctl:deployment"]
     assert len(deployment_tags) == 1
     assert deployment_tags[0]["Value"] == "sagemaker-self-service-training"
 
@@ -647,9 +645,7 @@ def test_no_tags_in_register_model():
     pipeline_def = builder.build_pipeline_definition()
 
     # Find RegisterModel in conditional branches
-    condition_step = [
-        s for s in pipeline_def["Steps"] if s["Type"] == "Condition"
-    ][0]
+    condition_step = [s for s in pipeline_def["Steps"] if s["Type"] == "Condition"][0]
     if_steps = condition_step["Arguments"].get("IfSteps", [])
     register_step = [s for s in if_steps if s["Type"] == "RegisterModel"][0]
 
@@ -713,13 +709,9 @@ def test_evaluate_container_entrypoint():
     pipeline_def = builder.build_pipeline_definition()
 
     # Find Processing step
-    processing_step = [
-        s for s in pipeline_def["Steps"] if s["Type"] == "Processing"
-    ][0]
+    processing_step = [s for s in pipeline_def["Steps"] if s["Type"] == "Processing"][0]
 
-    entrypoint = processing_step["Arguments"]["AppSpecification"][
-        "ContainerEntrypoint"
-    ]
+    entrypoint = processing_step["Arguments"]["AppSpecification"]["ContainerEntrypoint"]
 
     # Should extract tar and execute entrypoint
     assert "/bin/bash" in entrypoint

@@ -94,7 +94,7 @@ def train_epoch(model, device, train_loader, optimizer, epoch):
 
         if batch_idx % 10 == 0:
             print(
-                f"Epoch {epoch} [{batch_idx * len(data)}/{len(train_loader.dataset)}] Loss: {loss.item():.6f}"
+                f"Epoch {epoch} [{batch_idx * len(data)}/{len(train_loader.dataset)}] Loss: {loss.item():.6f}"  # noqa: E501
             )
 
     return total_loss / len(train_loader)
@@ -118,7 +118,7 @@ def validate(model, device, val_loader):
     accuracy = correct / len(val_loader.dataset)
 
     print(
-        f"Validation: Average loss: {val_loss:.4f}, Accuracy: {correct}/{len(val_loader.dataset)} ({100. * accuracy:.2f}%)"
+        f"Validation: Average loss: {val_loss:.4f}, Accuracy: {correct}/{len(val_loader.dataset)} ({100. * accuracy:.2f}%)"  # noqa: E501
     )
 
     return val_loss, accuracy
@@ -150,7 +150,7 @@ def main():
     print(f"Training for {args.epochs} epochs...")
 
     for epoch in range(1, args.epochs + 1):
-        train_loss = train_epoch(model, device, train_loader, optimizer, epoch)
+        train_loss = train_epoch(model, device, train_loader, optimizer, epoch)  # noqa: F841
 
         if val_loader:
             val_loss, val_accuracy = validate(model, device, val_loader)
