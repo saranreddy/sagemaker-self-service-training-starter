@@ -68,6 +68,9 @@ jobs:
       - name: Lint (flake8 and black)
         run: make lint
       
+      - name: Shellcheck scripts
+        run: shellcheck -S error scripts/*.sh
+      
       - name: Run unit tests
         run: pytest tests/ -v --cov=mlctl --cov-report=term-missing
 

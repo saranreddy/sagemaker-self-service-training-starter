@@ -55,7 +55,7 @@ def status(execution_arn: str, project: str):
             PipelineExecutionArn=execution_arn
         )
 
-        console.print(f"[bold]Pipeline Execution Status[/bold]\n")  # noqa:F541
+        console.print("[bold]Pipeline Execution Status[/bold]\n")
         console.print(f"[cyan]ARN:[/cyan] {execution_arn}")
         console.print(f"[cyan]Status:[/cyan] {response['PipelineExecutionStatus']}")
         console.print(
@@ -83,7 +83,7 @@ def status(execution_arn: str, project: str):
             table = Table()
             table.add_column("Step Name")
             table.add_column("Type")
-            table.add_column("Status")  # noqa:F541
+            table.add_column("Status")
             table.add_column("Started")
 
             for step in steps_response["PipelineExecutionSteps"]:

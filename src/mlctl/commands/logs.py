@@ -55,7 +55,7 @@ def logs(project: str, follow: bool):
 
         if not training_job_name:
             console.print("[yellow]No training job found in latest execution[/yellow]")
-            sys.exit(0)  # noqa:F541
+            sys.exit(0)
 
         console.print(
             f"[bold]Streaming logs for training job:[/bold] {training_job_name}\n"
@@ -83,7 +83,7 @@ def logs(project: str, follow: bool):
         while True:
             try:
                 kwargs = {
-                    "logGroupName": log_group,  # noqa:F541
+                    "logGroupName": log_group,
                     "logStreamName": log_stream,
                     "startFromHead": True,
                 }

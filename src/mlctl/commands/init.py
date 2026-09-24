@@ -55,6 +55,6 @@ def init(framework: str, output: str):
     )
     console.print("\nNext steps:")
     console.print("  1. Review and customize ml.yaml")
-    console.print("  2. Run: mlctl validate")  # noqa:F541
-    console.print("  3. Test locally: mlctl run --local")
+    console.print("  2. Run: mlctl validate")
+    console.print("  3. Test locally: mlctl run")
     console.print("  4. Submit to SageMaker: mlctl submit")

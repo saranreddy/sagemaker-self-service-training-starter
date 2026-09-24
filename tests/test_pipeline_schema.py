@@ -281,15 +281,9 @@ def test_compare_with_sdk_oracle(mock_config, ml_config, temp_project_dir):
     import tempfile
     from unittest.mock import patch, MagicMock
 
-    # In CI, fail if SDK is not available (except Python 3.12 which has distutils issue)
+    # In CI, fail if SDK is not available; locally, skip gracefully
     if not SDK_AVAILABLE:
-        # Python 3.12 removed distutils which sagemaker SDK requires; skip in CI
-        if sys.version_info >= (3, 12) and os.environ.get("CI"):
-            pytest.skip(
-                "Skipping SDK oracle test in Python 3.12 CI (sagemaker requires distutils, "
-                "removed in Python 3.12)"
-            )
-        elif os.environ.get("CI"):
+        if os.environ.get("CI"):
             pytest.fail(
                 f"SageMaker SDK not available in CI - required for SDK oracle test. "
                 f"Import error: {SDK_IMPORT_ERROR}"
@@ -312,7 +306,7 @@ def test_compare_with_sdk_oracle(mock_config, ml_config, temp_project_dir):
 
     # Build our boto3-based pipeline
     builder = PipelineBuilder(mock_config, ml_config, "us-east-1", temp_project_dir)
-    builder.code_s3_prefix = "s3://test-bucket/code/test/abc123"
+    builder.code_s3_prefix = "code/test/abc123"  # Key-only, not full S3 URI
     our_definition = builder.build_pipeline_definition()
 
     # Build equivalent SDK v2 pipeline with PipelineSession (offline, doesn't call AWS)
@@ -368,23 +362,22 @@ def test_compare_with_sdk_oracle(mock_config, ml_config, temp_project_dir):
 
                     session = PipelineSession(default_bucket=bucket)
 
-        # SDK Training step (script mode estimator)
-        sklearn_image = (
-            "683313688378.dkr.ecr.us-east-1.amazonaws.com/"
-            "sagemaker-scikit-learn:1.2-1-cpu-py3"
-        )
-        estimator = Estimator(
-            image_uri=sklearn_image,
+        # SDK Training step (script mode SKLearn estimator)
+        from sagemaker.sklearn import SKLearn
+
+        sklearn_estimator = SKLearn(
+            entry_point=train_code_file,
+            framework_version="1.2-1",
             role=role,
             instance_count=1,
             instance_type="ml.m5.large",
             sagemaker_session=session,
+            hyperparameters=ml_config["hyperparameters"],
         )
-        estimator.set_hyperparameters(**ml_config["hyperparameters"])
 
         train_step = TrainingStep(
             name="TrainModel",
-            estimator=estimator,
+            estimator=sklearn_estimator,
             inputs={
                 "train": f"s3://{bucket}/data/train",
                 "validation": f"s3://{bucket}/data/validation",
@@ -392,6 +385,10 @@ def test_compare_with_sdk_oracle(mock_config, ml_config, temp_project_dir):
         )
 
         # SDK Processing step with PropertyFile
+        sklearn_image = (
+            "683313688378.dkr.ecr.us-east-1.amazonaws.com/"
+            "sagemaker-scikit-learn:1.2-1-cpu-py3"
+        )
         processor = ScriptProcessor(
             role=role,
             image_uri=sklearn_image,
@@ -492,16 +489,26 @@ def test_compare_with_sdk_oracle(mock_config, ml_config, temp_project_dir):
         "Condition" in our_step_types
     ), f"Condition step missing. Got: {our_step_types}"
 
-    # Validate our Training step has script mode hyperparameters (JSON-encoded)
+    # Compare Training step HyperParameters
     our_training = [s for s in our_definition["Steps"] if s["Type"] == "Training"][0]
-    assert "HyperParameters" in our_training["Arguments"]
-    assert "sagemaker_program" in our_training["Arguments"]["HyperParameters"]
-    sm_submit_dir = "sagemaker_submit_directory"
-    assert sm_submit_dir in our_training["Arguments"]["HyperParameters"]
-    # Verify JSON encoding (should be quoted JSON strings)
-    assert our_training["Arguments"]["HyperParameters"]["sagemaker_program"].startswith(
-        '"'
-    )
+    sdk_training = [s for s in sdk_definition["Steps"] if s["Type"] == "Training"][0]
+    
+    our_hps = our_training["Arguments"]["HyperParameters"]
+    sdk_hps = sdk_training["Arguments"]["HyperParameters"]
+    
+    # Check script mode parameters exist
+    assert "sagemaker_program" in our_hps
+    assert "sagemaker_submit_directory" in our_hps
+    assert "sagemaker_program" in sdk_hps
+    assert "sagemaker_submit_directory" in sdk_hps
+    
+    # Compare user hyperparameters (JSON-encoded values)
+    for key in ml_config["hyperparameters"]:
+        assert key in our_hps
+        assert key in sdk_hps
+        # Both should JSON-encode the values
+        assert our_hps[key].startswith('"')
+        assert sdk_hps[key].startswith('"')
 
     # Validate our Processing step has PropertyFiles matching SDK
     our_processing = [s for s in our_definition["Steps"] if s["Type"] == "Processing"][
@@ -514,34 +521,40 @@ def test_compare_with_sdk_oracle(mock_config, ml_config, temp_project_dir):
     assert "PropertyFiles" in our_processing
     assert len(our_processing["PropertyFiles"]) > 0
     assert our_processing["PropertyFiles"][0]["PropertyFileName"] == "EvaluationReport"
-    # SDK also has PropertyFiles
-    assert "PropertyFiles" in sdk_processing
+    # Compare PropertyFiles (should be identical)
+    assert "PropertyFiles" in sdk_processing["Arguments"]
+    assert (
+        our_processing["Arguments"]["PropertyFiles"]
+        == sdk_processing["Arguments"]["PropertyFiles"]
+    )
 
-    # Validate our Condition uses Std:JsonGet (SDK compiles to Std:JsonGet)
+    # Compare Condition structure (should be identical)
     our_condition = [s for s in our_definition["Steps"] if s["Type"] == "Condition"][0]
-    left_value = our_condition["Arguments"]["Conditions"][0]["LeftValue"]
-    assert "Std:JsonGet" in left_value
-
-    # SDK should also have LeftValue with either JsonGet or Std:JsonGet
     sdk_condition = [s for s in sdk_definition["Steps"] if s["Type"] == "Condition"][0]
-    sdk_left_value = sdk_condition["Arguments"]["Conditions"][0]["LeftValue"]
-    assert "JsonGet" in sdk_left_value or "Std:JsonGet" in sdk_left_value
+    assert (
+        our_condition["Arguments"]["Conditions"]
+        == sdk_condition["Arguments"]["Conditions"]
+    )
 
-    # Find Fail step in our ElseSteps (in condition branch, not top-level)
+    # Compare Fail ErrorMessage JsonGet element
     our_else_steps = our_condition["Arguments"].get("ElseSteps", [])
     assert len(our_else_steps) > 0, "ElseSteps should contain Fail step"
     our_fail = [s for s in our_else_steps if s["Type"] == "Fail"][0]
+    our_error_msg = our_fail["Arguments"]["ErrorMessage"]
+    assert "Std:Join" in our_error_msg, "Fail ErrorMessage should use Std:Join"
 
-    # Validate our Fail step uses Std:Join for dynamic message
-    error_msg = our_fail["Arguments"]["ErrorMessage"]
-    assert "Std:Join" in error_msg, "Fail ErrorMessage should use Std:Join"
-
-    # SDK should also have Fail in ElseSteps with Join
+    # Find and compare the JsonGet element in the Join Values
     sdk_else_steps = sdk_condition["Arguments"].get("ElseSteps", [])
     assert len(sdk_else_steps) > 0, "SDK ElseSteps should contain Fail step"
     sdk_fail = [s for s in sdk_else_steps if s["Type"] == "Fail"][0]
     sdk_error_msg = sdk_fail["Arguments"]["ErrorMessage"]
-    assert "Join" in sdk_error_msg or "Std:Join" in sdk_error_msg
+    
+    # Extract JsonGet from both Join Values lists
+    our_join_values = our_error_msg["Std:Join"]["Values"]
+    sdk_join_values = sdk_error_msg["Std:Join"]["Values"]
+    our_jsonget = [v for v in our_join_values if isinstance(v, dict) and "Std:JsonGet" in v][0]
+    sdk_jsonget = [v for v in sdk_join_values if isinstance(v, dict) and "Std:JsonGet" in v][0]
+    assert our_jsonget == sdk_jsonget
 
     # Find RegisterModel in our IfSteps
     our_if_steps = our_condition["Arguments"].get("IfSteps", [])

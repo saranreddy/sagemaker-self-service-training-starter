@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Initial release of sagemaker-self-service-training-starter
 - `mlctl` CLI with commands: init, validate, run, submit, status, logs, list
-- Support for scikit-learn, XGBoost, and PyTorch (CPU) frameworks using AWS Deep Learning Containers
+- Support for scikit-learn, XGBoost, and PyTorch (CPU) frameworks using SageMaker framework containers
 - Local training mode (`mlctl run`) with plain Python (passes hyperparameters as CLI args, checks quality gate)
 - SageMaker pipeline generation using boto3 (train → evaluate → quality gate → model registry)
   - SageMaker script mode for training with JSON-encoded hyperparameters

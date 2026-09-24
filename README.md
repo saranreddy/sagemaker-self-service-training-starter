@@ -51,10 +51,10 @@ One `ml.yaml` file declares the project. No pipeline code to maintain.
 
 **Prerequisites**: Terraform 1.5+, AWS CLI v2, AWS credentials, Python 3.9+, `jq`, `make`, `bash` 3.2+
 
-1. **Clone and deploy the infrastructure:**
+1. **Use this template on GitHub, then clone and deploy the infrastructure:**
 
    ```bash
-   git clone https://github.com/saranreddy/sagemaker-self-service-training-starter.git
+   git clone https://github.com/<your-org>/sagemaker-self-service-training-starter.git
    cd sagemaker-self-service-training-starter
    make doctor          # Check prerequisites
    cd terraform
@@ -331,7 +331,7 @@ The following are **intentionally excluded** from v0.1.0 and may appear in futur
 - **Model explainability**: No Clarify integration.
 - **Notebook conversion**: Bring a `.py` script, not a `.ipynb`.
 - **Built-in algorithms**: Framework containers (sklearn, xgboost, pytorch) only; no built-in image classification, etc.
-- **Custom Docker images**: Uses AWS Deep Learning Containers; custom images require code changes to `src/mlctl/image_uris.py`.
+- **Custom Docker images**: Uses framework-specific SageMaker containers; custom images: set `frameworks.<fw>.training_image`/`inference_image` in org-config.yaml.
 
 ## Examples
 
@@ -429,15 +429,9 @@ Rather than build one opinionated deployment path, we stop at `PendingManualAppr
 
 The smoke test (`make smoke`) is designed for **macOS with bash 3.2** (also works on Linux with bash 3.2+, including 5.x) and requires:
 
-- **Valid AWS credentials** with the following permissions:
-  - `sagemaker:DescribePipeline`, `sagemaker:CreatePipeline`, `sagemaker:UpdatePipeline`, `sagemaker:StartPipelineExecution`
-  - `sagemaker:DescribeModelPackageGroup`, `sagemaker:CreateModelPackageGroup`, `sagemaker:AddTags`
-  - `s3:PutObject` on the artifact bucket
-  - `iam:PassRole` on the execution role
-  - `sts:GetCallerIdentity` (read-only)
-  - `logs:DescribeLogStreams` (for smoke test cleanup)
-  
-  Note: The AWS account **root user** has all these permissions by default
+- **Valid AWS credentials** with the following permissions (the **root user** or admin has all of these):
+  - Data scientist permissions: `sagemaker:CreatePipeline`, `sagemaker:UpdatePipeline`, `sagemaker:StartPipelineExecution`, `sagemaker:AddTags`, `s3:PutObject`, `iam:PassRole`, `sts:GetCallerIdentity`
+  - Plus cleanup/verification: `sagemaker:DescribePipeline`, `sagemaker:ListPipelineExecutions`, `sagemaker:StopPipelineExecution`, `sagemaker:DeletePipeline`, `sagemaker:DescribeModelPackageGroup`, `sagemaker:CreateModelPackageGroup`, `sagemaker:ListModelPackages`, `sagemaker:DeleteModelPackage`, `sagemaker:DeleteModelPackageGroup`, `s3:ListBucket`, `s3:GetObject`, `s3:DeleteObject`, `logs:DescribeLogStreams`, `logs:DeleteLogStream`
 - **Deployed infrastructure** (`make apply` must succeed first)
 - **Region us-east-1** (or edit `terraform/terraform.tfvars` to change region; `smoke-test.sh` reads from Terraform outputs)
 - **~10-15 minutes** for pipeline executions (2 pipelines: one pass with threshold 0.70, one fail with impossible threshold 1.01)

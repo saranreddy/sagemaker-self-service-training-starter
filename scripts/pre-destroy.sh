@@ -18,9 +18,8 @@ if [ ! -f "terraform.tfstate" ]; then
 fi
 
 REGION=$(terraform output -raw region 2>/dev/null || echo "us-east-1")
-DEPLOYMENT_TAG=$(terraform output -raw deployment_tag 2>/dev/null)
-if [ $? -ne 0 ] || [ -z "$DEPLOYMENT_TAG" ]; then
-    echo "Warning: terraform output deployment_tag failed, using default"
+if ! DEPLOYMENT_TAG=$(terraform output -raw deployment_tag 2>/dev/null) || [ -z "$DEPLOYMENT_TAG" ]; then
+    echo "Warning: terraform output deployment_tag failed, using default" >&2
     DEPLOYMENT_TAG="mlctl:deployment=sagemaker-self-service-training"
 fi
 
@@ -31,9 +30,8 @@ TAG_KEY=$(echo "$DEPLOYMENT_TAG" | cut -d= -f1)
 TAG_VALUE=$(echo "$DEPLOYMENT_TAG" | cut -d= -f2-)
 
 # Cache account ID
-ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text 2>/dev/null)
-if [ $? -ne 0 ] || [ -z "$ACCOUNT_ID" ]; then
-    echo "Error: cannot get AWS account ID. Check credentials."
+if ! ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text 2>/dev/null) || [ -z "$ACCOUNT_ID" ]; then
+    echo "Error: cannot get AWS account ID. Check credentials." >&2
     exit 1
 fi
 
@@ -145,8 +143,8 @@ if [ ${#TAGGED_PIPELINES[@]} -gt 0 ]; then
             --output text 2>/dev/null || echo "")
         
         for exec_arn in $executions; do
-            local max_wait=60
-            local waited=0
+            max_wait=60
+            waited=0
             while [ $waited -lt $max_wait ]; do
                 status=$(aws sagemaker describe-pipeline-execution \
                     --pipeline-execution-arn "$exec_arn" \
@@ -160,6 +158,11 @@ if [ ${#TAGGED_PIPELINES[@]} -gt 0 ]; then
                 sleep 2
                 waited=$((waited + 2))
             done
+            
+            # Report if execution didn't reach terminal state
+            if [ $waited -ge $max_wait ]; then
+                echo "Error: Execution $exec_arn did not reach terminal state after ${max_wait}s" >&2
+            fi
         done
     done
     

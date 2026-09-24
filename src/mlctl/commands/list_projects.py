@@ -55,7 +55,7 @@ def list_projects():
                 if exec_response.get("PipelineExecutionSummaries"):
                     last_status = exec_response["PipelineExecutionSummaries"][0][
                         "PipelineExecutionStatus"
-                    ]  # noqa:F541
+                    ]
             except Exception:
                 pass
 
@@ -83,6 +83,6 @@ def list_projects():
 
         console.print(table)
 
-    except Exception as e:  # noqa:F541
+    except Exception as e:
         console.print(f"[red]Failed to list projects: {e}[/red]")
         sys.exit(1)

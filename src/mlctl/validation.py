@@ -208,6 +208,10 @@ class ProjectValidator:
                 else:
                     self.errors.append(f"S3 access error for data.{key}: {e}")
                     console.print(f"[red]✗[/red] S3 access error for data.{key}: {e}")
+            except Exception as e:
+                # Catch network errors, NoCredentialsError, BotoCoreError, etc.
+                self.errors.append(f"S3 access error for data.{key}: {e}")
+                console.print(f"[red]✗[/red] S3 access error for data.{key}: {e}")
 
     def _parse_s3_uri(self, s3_uri: str) -> Tuple[str, str]:
         """Parse S3 URI into bucket and key."""

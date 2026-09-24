@@ -55,7 +55,7 @@ def submit(project_dir: str, org_config: str, skip_validation: bool, output: str
         if not validation_passed:
             if output == "text":
                 console.print(
-                    "\n[red]Validation failed. Fix errors before submitting.[/red]"  # noqa:F541
+                    "\n[red]Validation failed. Fix errors before submitting.[/red]"
                 )
             else:
                 print(json.dumps({"error": "validation failed"}), file=sys.stderr)
@@ -83,7 +83,7 @@ def submit(project_dir: str, org_config: str, skip_validation: bool, output: str
     region = session.region_name or "us-east-1"
 
     if output == "text":
-        console.print(f"[bold]Preparing pipeline submission...[/bold]")  # noqa:F541
+        console.print("[bold]Preparing pipeline submission...[/bold]")
         console.print(f"  Account: {account}")
         console.print(f"  Region: {region}")
         console.print(f"  Project: {ml_config['name']}")
@@ -133,10 +133,10 @@ def submit(project_dir: str, org_config: str, skip_validation: bool, output: str
         builder.ml_yaml_uri = code_uris["ml_yaml"]
 
         if output == "text":
-            console.print(f"  [green]✓[/green] Uploaded sourcedir.tar.gz")  # noqa:F541
-            console.print(f"  [green]✓[/green] Uploaded evaluation.tar.gz")  # noqa:F541
-            console.print(f"  [green]✓[/green] Uploaded ml.yaml")  # noqa:F541
-            console.print()  # noqa:F541
+            console.print("  [green]✓[/green] Uploaded sourcedir.tar.gz")
+            console.print("  [green]✓[/green] Uploaded evaluation.tar.gz")
+            console.print("  [green]✓[/green] Uploaded ml.yaml")
+            console.print()
     except Exception as e:
         if output == "text":
             console.print(f"[red]✗ Code upload failed: {e}[/red]")
@@ -206,8 +206,8 @@ def submit(project_dir: str, org_config: str, skip_validation: bool, output: str
             )
         else:
             console.print(
-                f"[green bold]✓ Pipeline execution started[/green bold]"  # noqa: F541
-            )  # noqa:F541
+                "[green bold]✓ Pipeline execution started[/green bold]"
+            )
             console.print(f"\n[cyan]Execution ARN:[/cyan]\n{execution_arn}")
             console.print(
                 f"\nMonitor with: mlctl status --execution-arn {execution_arn}"
