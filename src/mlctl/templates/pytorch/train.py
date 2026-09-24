@@ -1,5 +1,4 @@
-"""PyTorch training script for MNIST classification."""
-
+"""PyTorch training script for MNIST classification (SageMaker script mode)."""
 import argparse
 import json
 import os
@@ -10,7 +9,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from torch.utils.data import TensorDataset, DataLoader
+from torch.utils.data import DataLoader, TensorDataset
 
 
 class MNISTNet(nn.Module):
@@ -40,24 +39,24 @@ def parse_args():
     """Parse SageMaker-style arguments."""
     parser = argparse.ArgumentParser()
 
+    # Hyperparameters
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--lr", type=float, default=0.001)
 
+    # SageMaker environment variables (also as args for local compatibility)
     parser.add_argument(
         "--model-dir", type=str, default=os.environ.get("SM_MODEL_DIR", "/opt/ml/model")
     )
     parser.add_argument(
         "--train",
         type=str,
-        default=os.environ.get("SM_CHANNEL_TRAIN", "/opt/ml/input/data/train"),
+        default=os.environ.get("SM_CHANNEL_TRAINING", "/opt/ml/input/data/training"),
     )
     parser.add_argument(
         "--validation",
         type=str,
-        default=os.environ.get(
-            "SM_CHANNEL_VALIDATION", "/opt/ml/input/data/validation"
-        ),
+        default=os.environ.get("SM_CHANNEL_VALIDATION", "/opt/ml/input/data/validation"),
     )
 
     return parser.parse_args()

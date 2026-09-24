@@ -1,9 +1,7 @@
-"""XGBoost training script for Boston Housing regression."""
-
+"""XGBoost training script for Boston Housing regression (SageMaker script mode)."""
 import argparse
 import json
 import os
-import pickle
 from pathlib import Path
 
 import numpy as np
@@ -14,25 +12,25 @@ def parse_args():
     """Parse SageMaker-style arguments."""
     parser = argparse.ArgumentParser()
 
+    # Hyperparameters
     parser.add_argument("--max_depth", type=int, default=5)
     parser.add_argument("--eta", type=float, default=0.2)
     parser.add_argument("--objective", type=str, default="reg:squarederror")
     parser.add_argument("--num_round", type=int, default=100)
 
+    # SageMaker environment variables (also as args for local compatibility)
     parser.add_argument(
         "--model-dir", type=str, default=os.environ.get("SM_MODEL_DIR", "/opt/ml/model")
     )
     parser.add_argument(
         "--train",
         type=str,
-        default=os.environ.get("SM_CHANNEL_TRAIN", "/opt/ml/input/data/train"),
+        default=os.environ.get("SM_CHANNEL_TRAINING", "/opt/ml/input/data/training"),
     )
     parser.add_argument(
         "--validation",
         type=str,
-        default=os.environ.get(
-            "SM_CHANNEL_VALIDATION", "/opt/ml/input/data/validation"
-        ),
+        default=os.environ.get("SM_CHANNEL_VALIDATION", "/opt/ml/input/data/validation"),
     )
 
     return parser.parse_args()
@@ -69,11 +67,7 @@ def main():
 
     print("\nTraining XGBoost model...")
     bst = xgb.train(
-        params=params,
-        dtrain=dtrain,
-        num_boost_round=args.num_round,
-        evals=evals,
-        verbose_eval=10,
+        params=params, dtrain=dtrain, num_boost_round=args.num_round, evals=evals, verbose_eval=10
     )
 
     print(f"\nSaving model to {args.model_dir}")
