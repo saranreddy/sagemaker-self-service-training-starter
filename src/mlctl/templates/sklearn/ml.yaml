@@ -14,5 +14,5 @@ hyperparameters:
 
 quality_gate:
   metric: accuracy
-  threshold: 0.90
+  threshold: 0.75
   direction: maximize

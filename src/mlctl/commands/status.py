@@ -1,4 +1,5 @@
 """Check pipeline execution status."""
+
 import sys
 
 import boto3
@@ -10,88 +11,91 @@ console = Console()
 
 
 @click.command()
-@click.option(
-    '--execution-arn',
-    help='Pipeline execution ARN'
-)
-@click.option(
-    '--project',
-    help='Project name (shows latest execution)'
-)
+@click.option("--execution-arn", help="Pipeline execution ARN")
+@click.option("--project", help="Project name (shows latest execution)")
 def status(execution_arn: str, project: str):
     """Check pipeline execution status."""
     if not execution_arn and not project:
         console.print("[red]Provide either --execution-arn or --project[/red]")
         sys.exit(1)
-    
+
     session = boto3.session.Session()
-    region = session.region_name or 'us-east-1'
-    sagemaker_client = boto3.client('sagemaker', region_name=region)
-    
+    region = session.region_name or "us-east-1"
+    sagemaker_client = boto3.client("sagemaker", region_name=region)
+
     if project:
         pipeline_name = f"{project}-pipeline"
-        
+
         try:
             response = sagemaker_client.list_pipeline_executions(
                 PipelineName=pipeline_name,
                 MaxResults=1,
-                SortBy='CreationTime',
-                SortOrder='Descending'
+                SortBy="CreationTime",
+                SortOrder="Descending",
             )
-            
-            if not response.get('PipelineExecutionSummaries'):
-                console.print(f"[yellow]No executions found for project '{project}'[/yellow]")
+
+            if not response.get("PipelineExecutionSummaries"):
+                console.print(
+                    f"[yellow]No executions found for project '{project}'[/yellow]"
+                )
                 sys.exit(0)
-            
-            execution_arn = response['PipelineExecutionSummaries'][0]['PipelineExecutionArn']
-        
+
+            execution_arn = response["PipelineExecutionSummaries"][0][
+                "PipelineExecutionArn"
+            ]
+
         except Exception as e:
-            console.print(f"[red]Failed to find pipeline for project '{project}': {e}[/red]")
+            console.print(
+                f"[red]Failed to find pipeline for project '{project}': {e}[/red]"
+            )
             sys.exit(1)
-    
+
     try:
         response = sagemaker_client.describe_pipeline_execution(
             PipelineExecutionArn=execution_arn
         )
-        
+
         console.print(f"[bold]Pipeline Execution Status[/bold]\n")
         console.print(f"[cyan]ARN:[/cyan] {execution_arn}")
         console.print(f"[cyan]Status:[/cyan] {response['PipelineExecutionStatus']}")
-        console.print(f"[cyan]Display Name:[/cyan] {response.get('PipelineExecutionDisplayName', 'N/A')}")
-        
-        if 'CreationTime' in response:
-            console.print(f"[cyan]Created:[/cyan] {response['CreationTime']}")
-        
-        if 'LastModifiedTime' in response:
-            console.print(f"[cyan]Last Modified:[/cyan] {response['LastModifiedTime']}")
-        
-        if response.get('FailureReason'):
-            console.print(f"\n[red bold]Failure Reason:[/red bold]\n{response['FailureReason']}")
-        
-        steps_response = sagemaker_client.list_pipeline_execution_steps(
-            PipelineExecutionArn=execution_arn,
-            MaxResults=100
+        console.print(
+            f"[cyan]Display Name:[/cyan] {response.get('PipelineExecutionDisplayName', 'N/A')}"
         )
-        
-        if steps_response.get('PipelineExecutionSteps'):
+
+        if "CreationTime" in response:
+            console.print(f"[cyan]Created:[/cyan] {response['CreationTime']}")
+
+        if "LastModifiedTime" in response:
+            console.print(f"[cyan]Last Modified:[/cyan] {response['LastModifiedTime']}")
+
+        if response.get("FailureReason"):
+            console.print(
+                f"\n[red bold]Failure Reason:[/red bold]\n{response['FailureReason']}"
+            )
+
+        steps_response = sagemaker_client.list_pipeline_execution_steps(
+            PipelineExecutionArn=execution_arn, MaxResults=100
+        )
+
+        if steps_response.get("PipelineExecutionSteps"):
             console.print("\n[bold]Steps:[/bold]")
-            
+
             table = Table()
             table.add_column("Step Name")
             table.add_column("Type")
             table.add_column("Status")
             table.add_column("Started")
-            
-            for step in steps_response['PipelineExecutionSteps']:
-                step_name = step['StepName']
-                step_type = step.get('StepDisplayName', step.get('StepName', 'Unknown'))
-                status = step['StepStatus']
-                started = step.get('StartTime', 'N/A')
-                
+
+            for step in steps_response["PipelineExecutionSteps"]:
+                step_name = step["StepName"]
+                step_type = step.get("StepDisplayName", step.get("StepName", "Unknown"))
+                status = step["StepStatus"]
+                started = step.get("StartTime", "N/A")
+
                 table.add_row(step_name, step_type, status, str(started))
-            
+
             console.print(table)
-    
+
     except Exception as e:
         console.print(f"[red]Failed to get execution status: {e}[/red]")
         sys.exit(1)
