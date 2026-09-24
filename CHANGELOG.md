@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2026-09-24
+
+### Fixed
+- **S3 tag validation error**: Fixed `terraform/s3.tf` tag value containing semicolon (not allowed in AWS S3/SageMaker tags). Changed "force_destroy is enabled for demo purposes; disable for production" to use hyphen instead.
+- **Tag sanitization**: Added `_sanitize_tag_value()` method in `pipeline.py` to remove disallowed characters from all user-derived tag values (project name, team, owner, git commit, deployment tags, required tags, and CustomerMetadataProperties). AWS tags only allow letters, numbers, spaces, and `+ - = . _ : / @`. Values are truncated to 256 chars.
+- **Python 3.12+ compatibility**: Loosened dependency pins in `scripts/smoke-test.sh`, example `requirements.txt` files, and templates to support Python 3.9-3.13. Changed from strict pins (e.g., `scikit-learn==1.2.2`) to compatible ranges (e.g., `scikit-learn>=1.2.2,<1.6`). Added Python 3.13 to CI matrix.
+- **Train channel naming**: Fixed inconsistency between pipeline channel name (`training`) and train.py argument names (`--train`). Changed all examples and templates to use `--training` and `args.training` to match `SM_CHANNEL_TRAINING` environment variable. Updated README documentation.
+- **Non-git checkout handling**: Changed git commit value from `"unknown"` to `"none"` when not in a git repository. Pipeline execution display names now use content hash as identifier for non-git checkouts. Documented behavior in README under "Git Commit Tracking".
+- **Makefile improvements**: `make apply` and `make destroy` now honor `AUTO_APPROVE=1` to skip confirmation prompts. `make apply` creates `terraform.tfvars` from example if missing. `make destroy` continues even if pre-destroy cleanup fails (with clear warning message).
+
+### Added
+- **Tag validation unit tests**: New `tests/test_tag_validation.py` with comprehensive tests for AWS tag compliance:
+  - `_sanitize_tag_value()` behavior with disallowed characters and length limits
+  - Terraform tag literals validation (parses `.tf` files)
+  - `_build_tags()` output validation
+  - CustomerMetadataProperties sanitization in RegisterModel step
+- **Python 3.13 support**: Added to classifiers in `setup.py` and CI test matrix. Local-run CI jobs now test on both Python 3.9 and 3.13.
+
+### Changed
+- CI local-run jobs now install exact dependencies from `smoke-test.sh` (compatible ranges) instead of using `requirements.txt` directly.
+
 ## [0.1.0] - 2026-09-24
 
 ### Added

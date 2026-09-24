@@ -5,9 +5,9 @@ help:
 	@echo "  doctor    - Check prerequisites and environment"
 	@echo "  venv      - Create Python virtual environment with dependencies"
 	@echo "  init      - Initialize Terraform"
-	@echo "  apply     - Apply Terraform infrastructure"
+	@echo "  apply     - Apply Terraform infrastructure (set AUTO_APPROVE=1 to skip confirmation)"
 	@echo "  smoke     - Run smoke tests (requires deployed infrastructure)"
-	@echo "  destroy   - Destroy Terraform infrastructure (runs pre-destroy cleanup)"
+	@echo "  destroy   - Destroy Terraform infrastructure (set AUTO_APPROVE=1 to skip confirmation)"
 	@echo "  clean     - Clean build artifacts (preserves tfstate)"
 	@echo "  test      - Run Python unit tests"
 	@echo "  lint      - Run linters"
@@ -28,14 +28,34 @@ init:
 	@cd terraform && terraform init
 
 apply:
-	@cd terraform && terraform apply
+	@if [ ! -f terraform/terraform.tfvars ]; then \
+		echo "Creating terraform/terraform.tfvars from terraform.tfvars.example..."; \
+		cp terraform/terraform.tfvars.example terraform/terraform.tfvars; \
+		echo "✓ Created terraform.tfvars. Edit it if needed, then run 'make apply' again."; \
+		exit 1; \
+	fi
+	@if [ "$(AUTO_APPROVE)" = "1" ]; then \
+		cd terraform && terraform apply -auto-approve; \
+	else \
+		cd terraform && terraform apply; \
+	fi
 
 smoke: doctor
 	@scripts/smoke-test.sh
 
 destroy:
-	@scripts/pre-destroy.sh
-	@cd terraform && terraform destroy
+	@echo "Running pre-destroy cleanup..."
+	@if ! scripts/pre-destroy.sh; then \
+		echo ""; \
+		echo "WARNING: pre-destroy.sh failed. This is usually safe to ignore if resources are already deleted."; \
+		echo "Continuing with terraform destroy..."; \
+		echo ""; \
+	fi
+	@if [ "$(AUTO_APPROVE)" = "1" ]; then \
+		cd terraform && terraform destroy -auto-approve; \
+	else \
+		cd terraform && terraform destroy; \
+	fi
 
 clean:
 	@echo "Cleaning build artifacts..."

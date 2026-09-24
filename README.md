@@ -184,8 +184,8 @@ quality_gate:
 
 SageMaker script mode contract:
 
-- **Arguments**: `--<hyperparam>` for each key in `ml.yaml` hyperparameters, plus `--model-dir`, `--train`, `--validation`
-- **Environment variables**: `SM_MODEL_DIR`, `SM_CHANNEL_TRAIN`, `SM_CHANNEL_VALIDATION`, `SM_HP_<KEY>`
+- **Arguments**: `--<hyperparam>` for each key in `ml.yaml` hyperparameters, plus `--model-dir`, `--training`, `--validation`
+- **Environment variables**: `SM_MODEL_DIR`, `SM_CHANNEL_TRAINING`, `SM_CHANNEL_VALIDATION`, `SM_HP_<KEY>`
 - **Output**: Save model artifacts to `$SM_MODEL_DIR` (default `/opt/ml/model`)
 
 See `examples/sklearn-iris/train.py` for a complete example.
@@ -215,6 +215,10 @@ The quality gate reads the specified metric from this file.
      - **Pass** → **RegisterModel**: Create model package version as `PendingManualApproval`, attach evaluation metrics, git commit, ml.yaml metadata, tags
      - **Fail** → **QualityGateFailed**: Fail step with clear message including the actual metric value
 3. **Pipeline execution starts** and you monitor via `mlctl status` / `mlctl logs`
+
+### Git Commit Tracking
+
+When a model is registered, `CustomerMetadataProperties.GitCommit` records the current git commit hash for full reproducibility. If run from a non-git checkout (e.g., "Use this template" download as zip), the git commit is recorded as `none` and the pipeline execution display name uses a content hash (computed from your training and evaluation scripts) as an identifier instead. This ensures unique and trackable executions even outside git workflows.
 
 ## Frameworks and Containers (v0.1.0)
 
