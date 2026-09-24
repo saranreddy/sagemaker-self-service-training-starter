@@ -280,9 +280,14 @@ def test_pytorch_uses_inference_image(mock_config, ml_config, temp_project_dir):
 
 
 @pytest.mark.skipif(not SDK_AVAILABLE, reason="SageMaker SDK not available")
+@pytest.mark.skipif(
+    sys.version_info < (3, 11),
+    reason="SDK oracle test requires Python 3.11+ for offline usage",
+)
 def test_compare_with_sdk_oracle(mock_config, ml_config, temp_project_dir):
     """Compare our boto3-generated pipeline with SDK v2-generated reference."""
     import os
+    import sys
 
     # Set AWS region for SDK (required even for offline usage)
     os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
