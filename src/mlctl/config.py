@@ -42,17 +42,14 @@ class Config:
         return {
             "frameworks": {
                 "sklearn": {
-                    "container_uri_template": "{account}.dkr.ecr.{region}.amazonaws.com/sagemaker-scikit-learn:1.2-1-cpu-py3",
                     "default_instance_type": "ml.m5.large",
                     "version": "1.2-1",
                 },
                 "xgboost": {
-                    "container_uri_template": "{account}.dkr.ecr.{region}.amazonaws.com/sagemaker-xgboost:1.7-1",
                     "default_instance_type": "ml.m5.large",
                     "version": "1.7-1",
                 },
                 "pytorch": {
-                    "container_uri_template": "{account}.dkr.ecr.{region}.amazonaws.com/pytorch-training:2.1.0-cpu-py310",
                     "default_instance_type": "ml.m5.large",
                     "version": "2.1.0",
                 },
@@ -103,12 +100,19 @@ class Config:
 
         return instance_type in self.org_config.get("allowed_instance_types", [])
 
-    def resolve_container_uri(self, framework: str, region: str, account: str) -> str:
-        """Resolve container URI for framework."""
+    def resolve_training_image_uri(self, framework: str, region: str) -> str:
+        """Resolve training image URI for framework and region."""
+        from mlctl.image_uris import get_training_image_uri
+        
         fw_config = self.get_framework_config(framework)
-        template = fw_config["container_uri_template"]
-
-        return template.format(account=account, region=region)
+        return get_training_image_uri(framework, region)
+    
+    def resolve_inference_image_uri(self, framework: str, region: str) -> str:
+        """Resolve inference image URI for framework and region."""
+        from mlctl.image_uris import get_inference_image_uri
+        
+        fw_config = self.get_framework_config(framework)
+        return get_inference_image_uri(framework, region)
 
     def get_execution_role(self, team: Optional[str] = None) -> Optional[str]:
         """Get execution role ARN."""
