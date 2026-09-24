@@ -10,8 +10,14 @@ try:
     import sagemaker  # noqa: F401
 
     SDK_AVAILABLE = True
-except ImportError:
+except ImportError as e:
     SDK_AVAILABLE = False
+    SDK_IMPORT_ERROR = str(e)
+except Exception as e:
+    SDK_AVAILABLE = False
+    SDK_IMPORT_ERROR = f"Unexpected error: {e}"
+else:
+    SDK_IMPORT_ERROR = None
 
 from mlctl.config import Config
 from mlctl.pipeline import PipelineBuilder
