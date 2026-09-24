@@ -186,9 +186,9 @@ for group in $model_groups; do
         
         for pkg_arn in $packages; do
             if aws sagemaker delete-model-package --model-package-name "$pkg_arn" 2>/dev/null; then
-                report "success" "Deleted package: $(basename $pkg_arn)"
+                report "success" "Deleted package: $(basename "$pkg_arn")"
             else
-                report "error" "Failed to delete package: $(basename $pkg_arn)"
+                report "error" "Failed to delete package: $(basename "$pkg_arn")"
             fi
         done
         

@@ -227,6 +227,7 @@ python3 generate_data.py || fail "Data generation failed"
 
 PROJECT_NAME="smoke-test-iris"
 
+
 # Record S3 prefixes that will be created (execution-specific prefixes added after submit)
 CREATED_S3_PREFIXES+=("s3://$ARTIFACT_BUCKET/smoke-test/")
 CREATED_S3_PREFIXES+=("s3://$ARTIFACT_BUCKET/code/$PROJECT_NAME/")
@@ -346,12 +347,19 @@ model_details=$(aws sagemaker describe-model-package --model-package-name "$mode
 model_metrics=$(echo "$model_details" | jq '.ModelMetrics')
 [ "$model_metrics" != "null" ] || fail "ModelMetrics not found"
 metrics_s3_uri=$(echo "$model_details" | jq -r '.ModelMetrics.ModelQuality.Statistics.S3Uri // empty')
-if [ -n "$metrics_s3_uri" ]; then
-    echo "  Verifying metrics.json exists at $metrics_s3_uri"
+[ -n "$metrics_s3_uri" ] || fail "ModelMetrics.ModelQuality.Statistics.S3Uri is empty"
+    
     aws s3api head-object --bucket "$ARTIFACT_BUCKET" --key "${metrics_s3_uri#s3://$ARTIFACT_BUCKET/}" >/dev/null 2>&1 || \
         fail "metrics.json not found at $metrics_s3_uri"
-fi
+
 echo "✓ ModelMetrics attached and metrics.json exists"
+
+# Check MlYamlS3Uri in CustomerMetadataProperties
+ml_yaml_uri=$(echo "$model_details" | jq -r '.CustomerMetadataProperties.MlYamlS3Uri // empty')
+[ -n "$ml_yaml_uri" ] || fail "CustomerMetadataProperties.MlYamlS3Uri is empty"
+aws s3api head-object --bucket "$ARTIFACT_BUCKET" --key "${ml_yaml_uri#s3://$ARTIFACT_BUCKET/}" >/dev/null 2>&1 || \
+    fail "ml.yaml file not found at $ml_yaml_uri"
+echo "✓ MlYamlS3Uri in CustomerMetadataProperties and file exists"
 
 # Check CustomerMetadataProperties
 customer_metadata=$(echo "$model_details" | jq '.CustomerMetadataProperties')
@@ -440,8 +448,8 @@ while [ $ELAPSED -lt $MAX_WAIT ]; do
         
         [ -n "$failure_reason" ] || fail "No FailureReason or Metadata.Fail.ErrorMessage found"
         [[ "$failure_reason" =~ accuracy ]] || fail "FailureReason doesn't contain 'accuracy'"
-        [[ "$failure_reason" =~ 1.01 ]] || fail "FailureReason doesn't contain threshold '1.01'"
-        [[ "$failure_reason" =~ [0-9]+\.[0-9]+ ]] || fail "FailureReason doesn't contain actual numeric value"
+        [[ "$failure_reason" =~ 1\.01 ]] || fail "FailureReason doesn't contain threshold '1.01'"
+        [[ "$failure_reason" =~ "Actual value: "[0-9] ]] || fail "FailureReason doesn't contain actual numeric value"
         
         echo "  Failure reason: $failure_reason"
         
