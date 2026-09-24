@@ -90,7 +90,8 @@ data "aws_iam_policy_document" "sagemaker_execution_policy" {
       "sagemaker:StopTrainingJob",
       "sagemaker:CreateProcessingJob",
       "sagemaker:DescribeProcessingJob",
-      "sagemaker:StopProcessingJob"
+      "sagemaker:StopProcessingJob",
+      "sagemaker:AddTags"
     ]
 
     resources = [
@@ -106,7 +107,6 @@ data "aws_iam_policy_document" "sagemaker_execution_policy" {
     actions = [
       "sagemaker:CreatePipeline",
       "sagemaker:UpdatePipeline",
-      "sagemaker:DeletePipeline",
       "sagemaker:DescribePipeline",
       "sagemaker:ListPipelineExecutions",
       "sagemaker:StartPipelineExecution",
@@ -130,7 +130,8 @@ data "aws_iam_policy_document" "sagemaker_execution_policy" {
       "sagemaker:CreateModelPackage",
       "sagemaker:UpdateModelPackage",
       "sagemaker:DescribeModelPackage",
-      "sagemaker:ListModelPackages"
+      "sagemaker:ListModelPackages",
+      "sagemaker:AddTags"
     ]
 
     resources = [
