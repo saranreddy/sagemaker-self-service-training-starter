@@ -1,5 +1,4 @@
-"""Scikit-learn training script for Iris classification."""
-
+"""Scikit-learn training script for Iris classification (SageMaker script mode)."""
 import argparse
 import json
 import os
@@ -14,24 +13,24 @@ def parse_args():
     """Parse SageMaker-style arguments."""
     parser = argparse.ArgumentParser()
 
+    # Hyperparameters
     parser.add_argument("--max_depth", type=int, default=5)
     parser.add_argument("--n_estimators", type=int, default=100)
     parser.add_argument("--random_state", type=int, default=42)
 
+    # SageMaker environment variables (also as args for local compatibility)
     parser.add_argument(
         "--model-dir", type=str, default=os.environ.get("SM_MODEL_DIR", "/opt/ml/model")
     )
     parser.add_argument(
         "--train",
         type=str,
-        default=os.environ.get("SM_CHANNEL_TRAIN", "/opt/ml/input/data/train"),
+        default=os.environ.get("SM_CHANNEL_TRAINING", "/opt/ml/input/data/training"),
     )
     parser.add_argument(
         "--validation",
         type=str,
-        default=os.environ.get(
-            "SM_CHANNEL_VALIDATION", "/opt/ml/input/data/validation"
-        ),
+        default=os.environ.get("SM_CHANNEL_VALIDATION", "/opt/ml/input/data/validation"),
     )
 
     return parser.parse_args()
@@ -57,9 +56,7 @@ def main():
 
     print("\nTraining Random Forest classifier...")
     clf = RandomForestClassifier(
-        max_depth=args.max_depth,
-        n_estimators=args.n_estimators,
-        random_state=args.random_state,
+        max_depth=args.max_depth, n_estimators=args.n_estimators, random_state=args.random_state
     )
 
     clf.fit(X_train, y_train)
