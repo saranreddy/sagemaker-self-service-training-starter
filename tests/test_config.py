@@ -85,4 +85,4 @@ def test_resolve_inference_image_uri_pytorch():
     assert "763104351884" in inference_uri  # Inference account
 
     assert "pytorch-training" in training_uri
-    assert "683313688378" in training_uri  # Training account
+    assert "763104351884" in training_uri  # PyTorch account (same for all regions)

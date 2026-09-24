@@ -93,6 +93,9 @@ def submit(project_dir: str, org_config: str, skip_validation: bool, output: str
         content_paths = [str(sourcedir_path), str(evaluation_path), str(ml_yaml_path)]
         s3_prefix = builder.get_code_s3_prefix_for_content(content_paths)
 
+        # Set s3_prefix on builder for pipeline definition
+        builder.code_s3_prefix = s3_prefix
+
         # Now upload with the content-based prefix
         code_uris = upload_code_packages(
             Path(project_dir), ml_config["name"], bucket, s3_prefix, region

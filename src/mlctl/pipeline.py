@@ -27,6 +27,7 @@ class PipelineBuilder:
         self.project_name = ml_config["name"]
         self.git_commit = self._get_git_commit()
         self.ml_yaml_uri = None  # Set by submit.py after upload
+        self.code_s3_prefix = None  # Set by submit.py after content hashing
 
     def build_pipeline_definition(self) -> Dict[str, Any]:
         """Build complete pipeline definition JSON with correct schema."""
@@ -66,7 +67,8 @@ class PipelineBuilder:
             hyperparameters[k] = json.dumps(v)
 
         # Add required script mode hyperparameters
-        code_s3_prefix = self._get_code_s3_prefix()
+        # Use provided s3_prefix (set by submit.py) or generate default
+        code_s3_prefix = self.code_s3_prefix or self._get_default_code_s3_prefix()
         hyperparameters["sagemaker_program"] = json.dumps("train.py")
         hyperparameters["sagemaker_submit_directory"] = json.dumps(
             f"s3://{artifact_bucket}/{code_s3_prefix}/sourcedir.tar.gz"
@@ -437,6 +439,11 @@ class PipelineBuilder:
                 "Artifact bucket not configured. Set in org-config.yaml or MLCTL_ARTIFACT_BUCKET env var."
             )
         return bucket
+
+    def _get_default_code_s3_prefix(self) -> str:
+        """Get default S3 prefix for code (used in tests when content not yet packaged)."""
+        git_prefix = self.git_commit[:8] if self.git_commit != "unknown" else "nogit"
+        return f"code/{self.project_name}/{git_prefix}"
 
     def get_code_s3_prefix_for_content(self, content_paths: list) -> str:
         """Get S3 prefix for code based on actual file content hashes.
