@@ -136,5 +136,7 @@ def run(project_dir: str, org_config: str):
         console.print("[red bold]✗ Quality gate FAILED[/red bold]")
         sys.exit(1)
 
-    console.print(f"\n[green bold]✓ Local run completed successfully[/green bold]")  # noqa: F541
+    console.print(
+        f"\n[green bold]✓ Local run completed successfully[/green bold]"
+    )  # noqa: F541
     console.print(f"Output saved to: {project_path / 'local_output'}")
