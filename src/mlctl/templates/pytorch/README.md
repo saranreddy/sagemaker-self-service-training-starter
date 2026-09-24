@@ -24,7 +24,7 @@ This example trains a CNN on the MNIST dataset using PyTorch (CPU).
 
 3. Run locally:
    ```bash
-   mlctl run --local
+   mlctl run
    ```
 
 4. Submit to SageMaker:

@@ -24,7 +24,7 @@ This example trains a Random Forest classifier on the Iris dataset.
 
 3. Run locally:
    ```bash
-   mlctl run --local
+   mlctl run
    ```
 
 4. Submit to SageMaker:

@@ -39,10 +39,10 @@ One `ml.yaml` file declares the project. No pipeline code to maintain.
 
 ### For MLOps Engineers
 
-1. **One Terraform module** → Execution role, S3 bucket, CloudWatch logs, all least-privilege
-2. **One org-level config** → Framework container versions, instance allowlists, required tags, per-team settings
-3. **One pipeline template** → Train → Evaluate → Quality Gate → Register (with git commit tracking)
-4. **Upgrade path** → Change the framework container version in `org-config.yaml`; every project picks it up on next submit
+1. **One Terraform module** → Execution role, S3 bucket, least-privilege IAM policies
+2. **One org-level config** → Framework image URIs (with defaults per region), instance allowlists, required tags, deployment-scoped cleanup tags, per-team settings
+3. **One pipeline template** → Train → Evaluate → Quality Gate → Register (with git commit and ml.yaml tracking)
+4. **Image URI customization** → Override framework image URIs in `org-config.yaml` to pin specific versions or use custom images
 5. **Integration with the multi-team platform starter** → Easy import of team roles, buckets, allowlists if [sagemaker-multi-team-platform-starter](https://github.com/saranreddy/sagemaker-multi-team-platform-starter) is deployed
 
 ## Quick Start
@@ -161,7 +161,6 @@ One `ml.yaml` file declares the project. No pipeline code to maintain.
 name: my-model               # Project name (lowercase, hyphens ok, 2-64 chars)
 team: data-science           # Team name (used to look up role/bucket/allowlist)
 framework: sklearn           # sklearn | xgboost | pytorch
-framework_version: "1.2-1"   # (optional) Override org default
 instance_type: ml.m5.large   # Must be in the team's allowlist
 
 data:
@@ -225,7 +224,14 @@ The quality gate reads the specified metric from this file.
 | `xgboost`    | `sagemaker-xgboost:1.7-1`                                     | CPU      |
 | `pytorch`    | `pytorch-training:2.1.0-cpu-py310`                            | CPU      |
 
-GPU instances (e.g., `ml.g4dn.xlarge`) are supported if your team's allowlist permits them. Container URIs are resolved dynamically based on framework and region using the AWS Deep Learning Container account IDs. PyTorch uses a separate inference image URI for model registration.
+GPU instances (e.g., `ml.g4dn.xlarge`) are supported if your team's allowlist permits them.
+
+Container images are resolved per framework and region:
+- **sklearn/xgboost**: AWS-provided SageMaker containers (account varies by region)
+- **pytorch**: AWS Deep Learning Container (account 763104351884, all regions)
+- **Custom images**: Override in `org-config.yaml` under `frameworks.<framework>.training_image` and `inference_image`
+
+PyTorch uses a separate inference image for model registration.
 
 ## Cost
 
@@ -300,16 +306,17 @@ make destroy
 
 This runs `scripts/pre-destroy.sh` to clean up:
 
-- SageMaker pipelines **tagged with** `Project=sagemaker-self-service-training`
-- Model packages and model package groups **tagged with** the project tag
-- Running pipeline executions are stopped first
+- SageMaker pipelines **tagged with the deployment-scoped tag** (e.g., `mlctl:deployment=sagemaker-self-service-training`)
+- Model packages and model package groups **tagged with the deployment tag**
+- CloudWatch log streams for jobs from tagged pipelines (in `/aws/sagemaker/TrainingJobs` and `/aws/sagemaker/ProcessingJobs`)
+- Running pipeline executions are stopped first and waited for before deletion
 
 Then runs `terraform destroy`.
 
 **Important Notes**:
-- `pre-destroy.sh` only deletes resources tagged for this project or recorded by name during smoke tests
+- `pre-destroy.sh` only deletes resources tagged with the deployment-scoped tag from `org-config.yaml` (`deployment_tag` key)
 - SageMaker training and processing **job records** cannot be deleted via API. They remain visible in the console history but do not incur charges.
-- CloudWatch log streams in `/aws/sagemaker/TrainingJobs` and `/aws/sagemaker/ProcessingJobs` are **shared account-wide**. The smoke test deletes its own log streams by name; `pre-destroy.sh` does not touch these shared log groups to avoid affecting other users' jobs.
+- The smoke test tracks its own resources by name and cleans them up on both success and failure.
 
 ## v0.1.0 Scope Exclusions
 
@@ -362,11 +369,11 @@ terraform output -json > /tmp/platform-outputs.json
 python scripts/import-platform-config.py /tmp/platform-outputs.json > org-config.yaml
 ```
 
-This reads the platform's `team_configs` output and generates an `org-config.yaml` with per-team:
+This reads the platform's `team_details` output and generates an `org-config.yaml` with per-team:
 
 - `execution_role` (from the team's SageMaker role)
 - `artifact_bucket` (from the team's S3 bucket)
-- `allowed_instance_types` (from the team's allowlist)
+- `allowed_instance_types` (must be provided via `--allowlist` or defaults; platform does not export this)
 
 Projects with `team: data-science` will automatically use the data-science team's role, bucket, and allowlist.
 
@@ -405,7 +412,7 @@ Trade-off: We lose the SDK's helper methods. We accept this for the stability an
 
 Docker-based SageMaker local mode is powerful but adds setup friction (Docker Desktop on Mac, etc.). Most data scientists want to quickly test on a small sample. Plain Python with `SM_*` env vars achieves this with zero Docker dependencies.
 
-Docker-based local mode (`mlctl run --docker`) is not implemented in v0.1.0; the flag is accepted but defaults to plain Python mode.
+Docker-based local mode is not implemented in v0.1.0.
 
 ### Why Stop at the Model Registry?
 
@@ -430,7 +437,7 @@ The smoke test (`make smoke`) is designed for **macOS with bash 3.2** (also work
 
 **Root user compatibility**: If the deployer is the AWS account **root user**, they cannot `sts:AssumeRole`. The Terraform design passes the execution role ARN to SageMaker (which does not require the caller to assume it), so this works correctly.
 
-**Cleanup**: The smoke test runs cleanup on exit (success or failure) and deletes only the resources it created: pipelines, model packages, model package groups, S3 prefixes, and log streams by job name. It does not affect other projects or pipelines in the account.
+**Cleanup**: The smoke test runs cleanup on both success and failure via an EXIT trap. It deletes only the resources it created: pipelines, model packages, model package groups, all S3 prefixes (including `smoke-test/`, `code/<project>/`, `pipelines/`), and log streams by job name. It does not affect other projects or pipelines in the account.
 
 ## Contributing
 

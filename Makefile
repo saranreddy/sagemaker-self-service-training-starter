@@ -42,7 +42,7 @@ clean:
 	@rm -rf build/ dist/ *.egg-info/ .pytest_cache/ .coverage htmlcov/
 	@rm -rf src/mlctl.egg-info/
 	@find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
-	@find . -type d -name "*.pyc" -delete 2>/dev/null || true
+	@find . -type f -name "*.pyc" -delete 2>/dev/null || true
 	@rm -rf examples/*/data examples/*/local_output
 	@echo "Clean complete (tfstate preserved)"
 
@@ -52,7 +52,7 @@ test: venv
 
 lint: venv
 	@echo "Running flake8..."
-	@./venv/bin/flake8 src/mlctl/ tests/ --max-line-length=100 --extend-ignore=E203,W503 || true
+	@./venv/bin/flake8 src/mlctl/ tests/ --max-line-length=100 --extend-ignore=E203,W503
 	@echo "Running black check..."
 	@./venv/bin/black --check src/mlctl/ tests/
 	@echo "Linting complete"

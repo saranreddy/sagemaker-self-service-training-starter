@@ -105,12 +105,8 @@ data "aws_iam_policy_document" "sagemaker_execution_policy" {
     effect = "Allow"
 
     actions = [
-      "sagemaker:CreatePipeline",
-      "sagemaker:UpdatePipeline",
       "sagemaker:DescribePipeline",
       "sagemaker:ListPipelineExecutions",
-      "sagemaker:StartPipelineExecution",
-      "sagemaker:StopPipelineExecution",
       "sagemaker:DescribePipelineExecution",
       "sagemaker:ListPipelineExecutionSteps"
     ]
