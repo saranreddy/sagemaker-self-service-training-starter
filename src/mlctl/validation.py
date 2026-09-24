@@ -1,9 +1,6 @@
 """Validation logic for ml.yaml and project structure."""
 
 import json
-import os
-import subprocess
-import sys
 from pathlib import Path
 from typing import Dict, Any, List, Tuple
 

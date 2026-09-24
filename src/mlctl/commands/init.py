@@ -1,6 +1,5 @@
 """Initialize a new ML project."""
 
-import os
 import shutil
 from pathlib import Path
 

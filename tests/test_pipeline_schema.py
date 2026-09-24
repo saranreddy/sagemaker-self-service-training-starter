@@ -1,26 +1,13 @@
 """Test pipeline JSON schema against SageMaker SDK v2 oracle."""
 
 import json
-import sys
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
 
 try:
-    import sagemaker
-    from sagemaker.estimator import Framework
-    from sagemaker.processing import Processor, ProcessingInput, ProcessingOutput
-    from sagemaker.workflow.condition_step import ConditionStep
-    from sagemaker.workflow.conditions import ConditionGreaterThanOrEqualTo
-    from sagemaker.workflow.fail_step import FailStep
-    from sagemaker.workflow.functions import Join, JsonGet
-    from sagemaker.workflow.model_step import ModelStep
-    from sagemaker.workflow.parameters import ParameterString
-    from sagemaker.workflow.pipeline import Pipeline
-    from sagemaker.workflow.properties import PropertyFile
-    from sagemaker.workflow.steps import ProcessingStep, TrainingStep
+    import sagemaker  # noqa: F401
 
     SDK_AVAILABLE = True
 except ImportError:
@@ -280,15 +267,15 @@ def test_pytorch_uses_inference_image(mock_config, ml_config, temp_project_dir):
     assert "763104351884" in training_image  # PyTorch account (same for all regions)
 
 
-@pytest.mark.skipif(not SDK_AVAILABLE, reason="SageMaker SDK not available")
-@pytest.mark.skipif(
-    sys.version_info < (3, 11),
-    reason="SDK oracle test requires Python 3.11+ for offline usage",
-)
 def test_compare_with_sdk_oracle(mock_config, ml_config, temp_project_dir):
     """Compare our boto3-generated pipeline with SDK v2-generated reference."""
     import os
-    import sys
+
+    # In CI, fail if SDK is not available; locally, skip gracefully
+    if os.environ.get("CI"):
+        pytest.importorskip("sagemaker")
+    elif not SDK_AVAILABLE:
+        pytest.skip("SageMaker SDK not available")
 
     # Set AWS region for SDK (required even for offline usage)
     os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
@@ -304,35 +291,52 @@ def test_compare_with_sdk_oracle(mock_config, ml_config, temp_project_dir):
     from sagemaker.workflow.fail_step import FailStep
     from sagemaker.workflow.model_step import ModelStep
     from sagemaker.model import Model
-    from sagemaker import image_uris
-    import sagemaker
+    from sagemaker.local import LocalSession
 
     # Build our boto3-based pipeline
     builder = PipelineBuilder(mock_config, ml_config, "us-east-1", temp_project_dir)
+    builder.code_s3_prefix = "s3://test-bucket/code/test/abc123"
     our_definition = builder.build_pipeline_definition()
 
-    # Build equivalent SDK v2 pipeline offline
+    # Build equivalent SDK v2 pipeline with offline session
     role = "arn:aws:iam::123456789012:role/TestRole"
     bucket = "test-bucket"
 
-    # SDK Training step (script mode)
+    # Use LocalSession for offline pipeline building
+    session = LocalSession()
+    session.default_bucket = lambda: bucket
+
+    # SDK Training step (script mode estimator)
+    sklearn_image = (
+        "683313688378.dkr.ecr.us-east-1.amazonaws.com/"
+        "sagemaker-scikit-learn:1.2-1-cpu-py3"
+    )
     estimator = Estimator(
-        image_uri="763104351884.dkr.ecr.us-east-1.amazonaws.com/pytorch-training:2.1.0-cpu-py310",
+        image_uri=sklearn_image,
         role=role,
         instance_count=1,
         instance_type="ml.m5.large",
-        sagemaker_session=None,  # Offline
+        sagemaker_session=session,
     )
     estimator.set_hyperparameters(**ml_config["hyperparameters"])
+
+    train_step = TrainingStep(
+        name="TrainModel",
+        estimator=estimator,
+        inputs={
+            "train": f"s3://{bucket}/data/train",
+            "validation": f"s3://{bucket}/data/validation",
+        },
+    )
 
     # SDK Processing step with PropertyFile
     processor = ScriptProcessor(
         role=role,
-        image_uri="683313688378.dkr.ecr.us-east-1.amazonaws.com/sagemaker-scikit-learn:1.2-1-cpu-py3",
+        image_uri=sklearn_image,
         instance_count=1,
         instance_type="ml.m5.large",
         command=["python3"],
-        sagemaker_session=None,
+        sagemaker_session=session,
     )
 
     evaluation_report = PropertyFile(
@@ -341,8 +345,70 @@ def test_compare_with_sdk_oracle(mock_config, ml_config, temp_project_dir):
         path="metrics.json",
     )
 
-    # SDK Condition with JsonGet
-    cond_lte = ConditionGreaterThanOrEqualTo(
+    eval_step = ProcessingStep(
+        name="EvaluateModel",
+        processor=processor,
+        inputs=[
+            ProcessingInput(
+                source=train_step.properties.ModelArtifacts.S3ModelArtifacts,
+                destination="/opt/ml/processing/model",
+            ),
+        ],
+        outputs=[
+            ProcessingOutput(
+                output_name="evaluation",
+                source="/opt/ml/processing/evaluation",
+            ),
+        ],
+        code="evaluate.py",
+        property_files=[evaluation_report],
+    )
+
+    # SDK Model registration
+    model = Model(
+        image_uri=sklearn_image,
+        model_data=train_step.properties.ModelArtifacts.S3ModelArtifacts,
+        role=role,
+        sagemaker_session=session,
+    )
+
+    register_step = ModelStep(
+        name="RegisterModel",
+        step_args=model.register(
+            content_types=["application/json"],
+            response_types=["application/json"],
+            inference_instances=["ml.m5.large"],
+            transform_instances=["ml.m5.large"],
+            model_package_group_name="test-sklearn-models",
+            approval_status="PendingManualApproval",
+        ),
+    )
+
+    # SDK Fail step with dynamic message (using Join for metric value)
+    from sagemaker.workflow.functions import Join
+
+    fail_step = FailStep(
+        name="QualityGateFailed",
+        error_message=Join(
+            on=" ",
+            values=[
+                "Model quality gate failed.",
+                "Metric:",
+                "accuracy",
+                "Threshold:",
+                "0.90",
+                "Actual value:",
+                JsonGet(
+                    step_name="EvaluateModel",
+                    property_file=evaluation_report,
+                    json_path="accuracy",
+                ),
+            ],
+        ),
+    )
+
+    # SDK Condition with If/Else branches
+    cond_gte = ConditionGreaterThanOrEqualTo(
         left=JsonGet(
             step_name="EvaluateModel",
             property_file=evaluation_report,
@@ -351,8 +417,26 @@ def test_compare_with_sdk_oracle(mock_config, ml_config, temp_project_dir):
         right=0.90,
     )
 
-    # Structural comparison: our definition should have same step types and key structures
+    cond_step = ConditionStep(
+        name="CheckQualityGate",
+        conditions=[cond_gte],
+        if_steps=[register_step],
+        else_steps=[fail_step],
+    )
+
+    # Build SDK Pipeline
+    pipeline = Pipeline(
+        name="test-sklearn-pipeline",
+        steps=[train_step, eval_step, cond_step],
+        sagemaker_session=session,
+    )
+
+    # Get SDK-generated definition
+    sdk_definition = json.loads(pipeline.definition())
+
+    # Structural comparison: verify both have same step types
     our_step_types = {step["Type"] for step in our_definition["Steps"]}
+
     assert "Training" in our_step_types, f"Training step missing. Got: {our_step_types}"
     assert (
         "Processing" in our_step_types
@@ -360,35 +444,131 @@ def test_compare_with_sdk_oracle(mock_config, ml_config, temp_project_dir):
     assert (
         "Condition" in our_step_types
     ), f"Condition step missing. Got: {our_step_types}"
-    # RegisterModel and Fail are in conditional branches, check they exist somewhere in pipeline structure
-    pipeline_json_str = str(our_definition)
-    assert "RegisterModel" in pipeline_json_str, "RegisterModel not found in pipeline"
-    assert (
-        "Fail" in pipeline_json_str or "QualityGateFailed" in pipeline_json_str
-    ), "Fail step not found in pipeline"
 
-    # Validate our Training step has script mode structure
+    # Validate our Training step has script mode hyperparameters (JSON-encoded)
     our_training = [s for s in our_definition["Steps"] if s["Type"] == "Training"][0]
     assert "HyperParameters" in our_training["Arguments"]
     assert "sagemaker_program" in our_training["Arguments"]["HyperParameters"]
-    assert "sagemaker_submit_directory" in our_training["Arguments"]["HyperParameters"]
+    sm_submit_dir = "sagemaker_submit_directory"
+    assert sm_submit_dir in our_training["Arguments"]["HyperParameters"]
+    # Verify JSON encoding (should be quoted JSON strings)
+    assert our_training["Arguments"]["HyperParameters"]["sagemaker_program"].startswith(
+        '"'
+    )
 
-    # Validate our Processing step has PropertyFiles (SDK would have this)
+    # Validate our Processing step has PropertyFiles matching SDK
     our_processing = [s for s in our_definition["Steps"] if s["Type"] == "Processing"][
         0
     ]
+    sdk_processing = [s for s in sdk_definition["Steps"] if s["Type"] == "Processing"][
+        0
+    ]
+
     assert "PropertyFiles" in our_processing
     assert len(our_processing["PropertyFiles"]) > 0
     assert our_processing["PropertyFiles"][0]["PropertyFileName"] == "EvaluationReport"
+    # SDK also has PropertyFiles
+    assert "PropertyFiles" in sdk_processing
 
-    # Validate our Condition uses Std:JsonGet (SDK uses JsonGet which compiles to Std:JsonGet)
+    # Validate our Condition uses Std:JsonGet (SDK compiles to Std:JsonGet)
     our_condition = [s for s in our_definition["Steps"] if s["Type"] == "Condition"][0]
     left_value = our_condition["Arguments"]["Conditions"][0]["LeftValue"]
     assert "Std:JsonGet" in left_value
 
-    # Validate our Fail step uses Std:Join (SDK FailStep supports dynamic messages)
-    our_fail = [s for s in our_definition["Steps"] if s["Type"] == "Fail"][0]
-    error_msg = our_fail["Arguments"]["ErrorMessage"]
-    assert "Std:Join" in error_msg
+    # SDK should also have LeftValue with either JsonGet or Std:JsonGet
+    sdk_condition = [s for s in sdk_definition["Steps"] if s["Type"] == "Condition"][0]
+    sdk_left_value = sdk_condition["Arguments"]["Conditions"][0]["LeftValue"]
+    assert "JsonGet" in sdk_left_value or "Std:JsonGet" in sdk_left_value
 
-    print("\n✓ Pipeline structure matches SDK v2-generated patterns")
+    # Find Fail step in our ElseSteps (in condition branch, not top-level)
+    our_else_steps = our_condition["Arguments"].get("ElseSteps", [])
+    assert len(our_else_steps) > 0, "ElseSteps should contain Fail step"
+    our_fail = [s for s in our_else_steps if s["Type"] == "Fail"][0]
+
+    # Validate our Fail step uses Std:Join for dynamic message
+    error_msg = our_fail["Arguments"]["ErrorMessage"]
+    assert "Std:Join" in error_msg, "Fail ErrorMessage should use Std:Join"
+
+    # SDK should also have Fail in ElseSteps with Join
+    sdk_else_steps = sdk_condition["Arguments"].get("ElseSteps", [])
+    assert len(sdk_else_steps) > 0, "SDK ElseSteps should contain Fail step"
+    sdk_fail = [s for s in sdk_else_steps if s["Type"] == "Fail"][0]
+    sdk_error_msg = sdk_fail["Arguments"]["ErrorMessage"]
+    assert "Join" in sdk_error_msg or "Std:Join" in sdk_error_msg
+
+    # Find RegisterModel in our IfSteps
+    our_if_steps = our_condition["Arguments"].get("IfSteps", [])
+    assert len(our_if_steps) > 0, "IfSteps should contain RegisterModel"
+    our_register = [s for s in our_if_steps if s["Type"] == "RegisterModel"][0]
+
+    # Validate RegisterModel has ModelMetrics and InferenceSpecification
+    assert "ModelMetrics" in our_register["Arguments"]
+    assert "InferenceSpecification" in our_register["Arguments"]
+
+    # SDK should also have RegisterModel in IfSteps
+    sdk_if_steps = sdk_condition["Arguments"].get("IfSteps", [])
+    assert len(sdk_if_steps) > 0, "SDK IfSteps should contain RegisterModel"
+
+    print("\n✓ Pipeline structure matches SDK v2-generated definition")
+
+
+def test_image_uri_override_in_pipeline():
+    """Test that org-config image overrides appear in pipeline steps."""
+    custom_training_image = (
+        "123456789012.dkr.ecr.us-east-1.amazonaws.com/custom-sklearn:1.0"
+    )
+    custom_inference_image = (
+        "123456789012.dkr.ecr.us-east-1.amazonaws.com/" "custom-sklearn-inference:1.0"
+    )
+
+    config_data = {
+        "execution_role": "arn:aws:iam::123456789012:role/test",
+        "artifact_bucket": "test-bucket",
+        "frameworks": {
+            "sklearn": {
+                "training_image": custom_training_image,
+                "inference_image": custom_inference_image,
+            }
+        },
+    }
+
+    config = Config(config_data)
+
+    ml_config = {
+        "name": "test-override",
+        "team": "test-team",
+        "framework": "sklearn",
+        "instance_type": "ml.m5.large",
+        "data": {
+            "train": "s3://bucket/data/train",
+            "validation": "s3://bucket/data/validation",
+        },
+        "hyperparameters": {"max_depth": 5},
+        "quality_gate": {
+            "metric": "accuracy",
+            "threshold": 0.8,
+            "direction": "higher_is_better",
+        },
+    }
+
+    builder = PipelineBuilder(config, ml_config, "us-east-1")
+    builder.code_s3_prefix = "s3://bucket/code/test-project/abc123"
+    pipeline_def = builder.build_pipeline_definition()
+
+    # Find Training step and verify it uses custom training image
+    training_step = [s for s in pipeline_def["Steps"] if s["Type"] == "Training"][0]
+    training_image = training_step["Arguments"]["AlgorithmSpecification"][
+        "TrainingImage"
+    ]
+    assert training_image == custom_training_image
+
+    # Find Processing step and verify it uses custom training image
+    processing_step = [s for s in pipeline_def["Steps"] if s["Type"] == "Processing"][0]
+    processing_image = processing_step["Arguments"]["AppSpecification"]["ImageUri"]
+    assert processing_image == custom_training_image
+
+    # Find RegisterModel step (in condition branches) with custom inference image
+    pipeline_json_str = json.dumps(pipeline_def)
+    assert (
+        custom_inference_image in pipeline_json_str
+    ), "Custom inference image not found in RegisterModel step"

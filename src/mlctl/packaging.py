@@ -1,11 +1,9 @@
 """Code packaging utilities for SageMaker script mode."""
 
-import hashlib
-import os
 import tarfile
 import tempfile
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict
 
 import boto3
 

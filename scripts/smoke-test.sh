@@ -8,10 +8,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 
 # Track resources for cleanup
-declare -a CREATED_PIPELINES
-declare -a CREATED_EXECUTIONS
-declare -a CREATED_MODEL_GROUPS
-declare -a CREATED_S3_PREFIXES
+CREATED_PIPELINES=()
+CREATED_EXECUTIONS=()
+CREATED_MODEL_GROUPS=()
+CREATED_S3_PREFIXES=()
 
 CLEANUP_DONE=false
 WORK_DIR=""
@@ -53,7 +53,7 @@ cleanup() {
     fi
     
     # Collect job names from pipeline executions before deleting
-    declare -a JOB_NAMES
+    local JOB_NAMES=()
     if [ ${#CREATED_EXECUTIONS[@]} -gt 0 ]; then
         for exec_arn in "${CREATED_EXECUTIONS[@]}"; do
             echo "Collecting job names from $exec_arn..."
@@ -190,7 +190,14 @@ WORK_DIR=$(mktemp -d)
 cp -r "$ROOT_DIR/examples/sklearn-iris"/* "$WORK_DIR/"
 cd "$WORK_DIR"
 
-# Create org-config.yaml in temp dir
+# Get deployment tag from terraform output
+cd "$ROOT_DIR/terraform"
+DEPLOYMENT_TAG=$(terraform output -raw deployment_tag 2>/dev/null || echo "mlctl:deployment=sagemaker-self-service-training")
+TAG_KEY=$(echo "$DEPLOYMENT_TAG" | cut -d= -f1)
+TAG_VALUE=$(echo "$DEPLOYMENT_TAG" | cut -d= -f2-)
+cd "$WORK_DIR"
+
+# Create org-config.yaml in temp dir with deployment_tag
 cat > org-config.yaml <<EOF
 execution_role: $EXECUTION_ROLE
 artifact_bucket: $ARTIFACT_BUCKET
@@ -209,6 +216,9 @@ allowed_instance_types:
 required_tags:
   Project: sagemaker-self-service-training
 
+deployment_tag:
+  $TAG_KEY: $TAG_VALUE
+
 teams: {}
 EOF
 
@@ -216,12 +226,10 @@ echo "=== Test 1: Generate and upload data ==="
 python3 generate_data.py || fail "Data generation failed"
 
 PROJECT_NAME="smoke-test-iris"
-GIT_COMMIT=$(cd "$ROOT_DIR" && git rev-parse HEAD 2>/dev/null || echo "unknown")
 
-# Record ALL S3 prefixes that will be created
+# Record S3 prefixes that will be created (execution-specific prefixes added after submit)
 CREATED_S3_PREFIXES+=("s3://$ARTIFACT_BUCKET/smoke-test/")
 CREATED_S3_PREFIXES+=("s3://$ARTIFACT_BUCKET/code/$PROJECT_NAME/")
-CREATED_S3_PREFIXES+=("s3://$ARTIFACT_BUCKET/pipelines/")
 
 aws s3 sync data/train/ "s3://$ARTIFACT_BUCKET/smoke-test/iris/train/" --quiet || fail "S3 upload failed"
 aws s3 sync data/validation/ "s3://$ARTIFACT_BUCKET/smoke-test/iris/validation/" --quiet || fail "S3 upload failed"
@@ -270,6 +278,10 @@ EXECUTION_ARN=$(echo "$submit_output" | jq -r '.execution_arn') || fail "Failed 
 [ -n "$EXECUTION_ARN" ] || fail "Empty execution ARN"
 CREATED_EXECUTIONS+=("$EXECUTION_ARN")
 
+# Record execution-specific pipeline output prefix
+EXEC_ID="${EXECUTION_ARN##*/}"
+CREATED_S3_PREFIXES+=("s3://$ARTIFACT_BUCKET/pipelines/$EXEC_ID/")
+
 echo "✓ Pipeline submitted: $EXECUTION_ARN"
 echo ""
 
@@ -281,12 +293,10 @@ CONSECUTIVE_ERRORS=0
 MAX_CONSECUTIVE_ERRORS=5
 
 while [ $ELAPSED -lt $MAX_WAIT ]; do
-    STATUS=$(aws sagemaker describe-pipeline-execution \
+    if ! STATUS=$(aws sagemaker describe-pipeline-execution \
         --pipeline-execution-arn "$EXECUTION_ARN" \
         --query 'PipelineExecutionStatus' \
-        --output text 2>&1)
-    
-    if [ $? -ne 0 ]; then
+        --output text 2>/dev/null); then
         CONSECUTIVE_ERRORS=$((CONSECUTIVE_ERRORS + 1))
         echo "  Transient describe error ($CONSECUTIVE_ERRORS/$MAX_CONSECUTIVE_ERRORS), retrying..."
         if [ $CONSECUTIVE_ERRORS -ge $MAX_CONSECUTIVE_ERRORS ]; then
@@ -381,6 +391,10 @@ EXECUTION_ARN_FAIL=$(echo "$submit_output_fail" | jq -r '.execution_arn') || fai
 [ -n "$EXECUTION_ARN_FAIL" ] || fail "Empty execution ARN for failing case"
 CREATED_EXECUTIONS+=("$EXECUTION_ARN_FAIL")
 
+# Record execution-specific pipeline output prefix for failed case
+EXEC_ID_FAIL="${EXECUTION_ARN_FAIL##*/}"
+CREATED_S3_PREFIXES+=("s3://$ARTIFACT_BUCKET/pipelines/$EXEC_ID_FAIL/")
+
 echo "✓ Pipeline submitted (expected to fail): $EXECUTION_ARN_FAIL"
 echo ""
 
@@ -389,12 +403,10 @@ ELAPSED=0
 CONSECUTIVE_ERRORS=0
 
 while [ $ELAPSED -lt $MAX_WAIT ]; do
-    STATUS=$(aws sagemaker describe-pipeline-execution \
+    if ! STATUS=$(aws sagemaker describe-pipeline-execution \
         --pipeline-execution-arn "$EXECUTION_ARN_FAIL" \
         --query 'PipelineExecutionStatus' \
-        --output text 2>&1)
-    
-    if [ $? -ne 0 ]; then
+        --output text 2>/dev/null); then
         CONSECUTIVE_ERRORS=$((CONSECUTIVE_ERRORS + 1))
         echo "  Transient describe error ($CONSECUTIVE_ERRORS/$MAX_CONSECUTIVE_ERRORS), retrying..."
         if [ $CONSECUTIVE_ERRORS -ge $MAX_CONSECUTIVE_ERRORS ]; then

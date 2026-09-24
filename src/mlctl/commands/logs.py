@@ -75,7 +75,7 @@ def logs(project: str, follow: bool):
 
             if response.get("logStreams"):
                 log_stream = response["logStreams"][0]["logStreamName"]
-        except:
+        except Exception:
             pass
 
         next_token = None

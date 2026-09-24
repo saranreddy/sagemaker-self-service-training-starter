@@ -18,7 +18,11 @@ if [ ! -f "terraform.tfstate" ]; then
 fi
 
 REGION=$(terraform output -raw region 2>/dev/null || echo "us-east-1")
-DEPLOYMENT_TAG=$(terraform output -raw deployment_tag 2>/dev/null || echo "mlctl:deployment=sagemaker-self-service-training")
+DEPLOYMENT_TAG=$(terraform output -raw deployment_tag 2>/dev/null)
+if [ $? -ne 0 ] || [ -z "$DEPLOYMENT_TAG" ]; then
+    echo "Warning: terraform output deployment_tag failed, using default"
+    DEPLOYMENT_TAG="mlctl:deployment=sagemaker-self-service-training"
+fi
 
 export AWS_DEFAULT_REGION="$REGION"
 
@@ -27,7 +31,11 @@ TAG_KEY=$(echo "$DEPLOYMENT_TAG" | cut -d= -f1)
 TAG_VALUE=$(echo "$DEPLOYMENT_TAG" | cut -d= -f2-)
 
 # Cache account ID
-ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text 2>/dev/null || echo "")
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text 2>/dev/null)
+if [ $? -ne 0 ] || [ -z "$ACCOUNT_ID" ]; then
+    echo "Error: cannot get AWS account ID. Check credentials."
+    exit 1
+fi
 
 echo "Region: $REGION"
 echo "Deployment Tag: $TAG_KEY=$TAG_VALUE"
@@ -64,8 +72,8 @@ has_deployment_tag() {
 # 1. Collect pipeline names and their execution job names BEFORE stopping/deleting
 echo "Step 1: Collecting tagged pipelines and their job names..."
 
-declare -a TAGGED_PIPELINES
-declare -a ALL_JOB_NAMES
+TAGGED_PIPELINES=()
+ALL_JOB_NAMES=()
 
 pipelines=$(aws sagemaker list-pipelines \
     --query "PipelineSummaries[].PipelineName" \
@@ -109,7 +117,7 @@ done
 echo "Found ${#TAGGED_PIPELINES[@]} tagged pipelines, ${#ALL_JOB_NAMES[@]} jobs"
 echo ""
 
-# 2. Stop running executions for tagged pipelines
+# 2. Stop running executions for tagged pipelines and wait for terminal state
 if [ ${#TAGGED_PIPELINES[@]} -gt 0 ]; then
     echo "Step 2: Stopping running executions..."
     
@@ -121,10 +129,37 @@ if [ ${#TAGGED_PIPELINES[@]} -gt 0 ]; then
         
         for exec_arn in $executions; do
             if aws sagemaker stop-pipeline-execution --pipeline-execution-arn "$exec_arn" 2>/dev/null; then
-                report "success" "Stopped execution: $(basename $exec_arn)"
+                report "success" "Stopped execution: $(basename "$exec_arn")"
             else
-                report "error" "Failed to stop execution: $(basename $exec_arn)"
+                report "error" "Failed to stop execution: $(basename "$exec_arn")"
             fi
+        done
+    done
+    
+    # Wait for stopped executions to reach terminal state
+    echo "Waiting for stopped executions to reach terminal state..."
+    for pipeline in "${TAGGED_PIPELINES[@]}"; do
+        executions=$(aws sagemaker list-pipeline-executions \
+            --pipeline-name "$pipeline" \
+            --query "PipelineExecutionSummaries[?PipelineExecutionStatus=='Stopping'].PipelineExecutionArn" \
+            --output text 2>/dev/null || echo "")
+        
+        for exec_arn in $executions; do
+            local max_wait=60
+            local waited=0
+            while [ $waited -lt $max_wait ]; do
+                status=$(aws sagemaker describe-pipeline-execution \
+                    --pipeline-execution-arn "$exec_arn" \
+                    --query 'PipelineExecutionStatus' \
+                    --output text 2>/dev/null || echo "UNKNOWN")
+                
+                if [[ "$status" =~ ^(Succeeded|Failed|Stopped)$ ]]; then
+                    break
+                fi
+                
+                sleep 2
+                waited=$((waited + 2))
+            done
         done
     done
     

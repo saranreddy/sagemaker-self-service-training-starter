@@ -86,3 +86,63 @@ def test_resolve_inference_image_uri_pytorch():
 
     assert "pytorch-training" in training_uri
     assert "763104351884" in training_uri  # PyTorch account (same for all regions)
+
+
+def test_image_uri_override_string():
+    """Test org-config image URI override with string URI."""
+    training_image = (
+        "123456789012.dkr.ecr.us-east-1.amazonaws.com/custom-sklearn:latest"
+    )
+    inference_image = (
+        "123456789012.dkr.ecr.us-east-1.amazonaws.com/"
+        "custom-sklearn-inference:latest"
+    )
+
+    config_data = {
+        "execution_role": "arn:aws:iam::123456789012:role/test",
+        "artifact_bucket": "test-bucket",
+        "frameworks": {
+            "sklearn": {
+                "training_image": training_image,
+                "inference_image": inference_image,
+            }
+        },
+    }
+
+    config = Config(config_data)
+
+    training_uri = config.resolve_training_image_uri("sklearn", "us-east-1")
+    inference_uri = config.resolve_inference_image_uri("sklearn", "us-east-1")
+
+    assert training_uri == training_image
+    assert inference_uri == inference_image
+
+
+def test_image_uri_override_region_map():
+    """Test org-config image URI override with region map."""
+    us_image = "123456789012.dkr.ecr.us-east-1.amazonaws.com/custom-xgboost:latest"
+    eu_image = "123456789012.dkr.ecr.eu-west-1.amazonaws.com/custom-xgboost:latest"
+
+    config_data = {
+        "execution_role": "arn:aws:iam::123456789012:role/test",
+        "artifact_bucket": "test-bucket",
+        "frameworks": {
+            "xgboost": {
+                "training_image": {
+                    "us-east-1": us_image,
+                    "eu-west-1": eu_image,
+                },
+            }
+        },
+    }
+
+    config = Config(config_data)
+
+    us_uri = config.resolve_training_image_uri("xgboost", "us-east-1")
+    eu_uri = config.resolve_training_image_uri("xgboost", "eu-west-1")
+    fallback_uri = config.resolve_training_image_uri("xgboost", "ap-south-1")
+
+    assert us_uri == us_image
+    assert eu_uri == eu_image
+    # Falls back to default for ap-south-1
+    assert "141502667606" in fallback_uri

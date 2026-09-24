@@ -1,6 +1,5 @@
 """Configuration management for mlctl."""
 
-import json
 import os
 from pathlib import Path
 from typing import Dict, Any, Optional
@@ -102,17 +101,45 @@ class Config:
         return instance_type in self.org_config.get("allowed_instance_types", [])
 
     def resolve_training_image_uri(self, framework: str, region: str) -> str:
-        """Resolve training image URI for framework and region."""
+        """Get training image URI for framework and region.
+
+        Returns training_image from org-config if set, otherwise defaults.
+        training_image can be a string URI or a dict mapping {region: uri}.
+        """
         from mlctl.image_uris import get_training_image_uri
 
         fw_config = self.get_framework_config(framework)
+
+        if "training_image" in fw_config:
+            image = fw_config["training_image"]
+            # Support both string URI and region map
+            if isinstance(image, dict):
+                if region in image:
+                    return image[region]
+            else:
+                return image
+
         return get_training_image_uri(framework, region)
 
     def resolve_inference_image_uri(self, framework: str, region: str) -> str:
-        """Resolve inference image URI for framework and region."""
+        """Get inference image URI for framework and region (for registration).
+
+        Returns inference_image from org-config if set, otherwise defaults.
+        inference_image can be a string URI or a dict mapping {region: uri}.
+        """
         from mlctl.image_uris import get_inference_image_uri
 
         fw_config = self.get_framework_config(framework)
+
+        if "inference_image" in fw_config:
+            image = fw_config["inference_image"]
+            # Support both string URI and region map
+            if isinstance(image, dict):
+                if region in image:
+                    return image[region]
+            else:
+                return image
+
         return get_inference_image_uri(framework, region)
 
     def get_execution_role(self, team: Optional[str] = None) -> Optional[str]:

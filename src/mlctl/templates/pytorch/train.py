@@ -1,7 +1,7 @@
 """PyTorch training script for MNIST classification (SageMaker script mode)."""
 
 import argparse
-import json
+import json  # noqa: F401
 import os
 from pathlib import Path
 

@@ -1,7 +1,7 @@
 """Scikit-learn training script for Iris classification (SageMaker script mode)."""
 
 import argparse
-import json
+import json  # noqa: F401
 import os
 import pickle
 from pathlib import Path

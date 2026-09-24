@@ -1,7 +1,7 @@
 """XGBoost training script for Boston Housing regression (SageMaker script mode)."""
 
 import argparse
-import json
+import json  # noqa: F401
 import os
 from pathlib import Path
 

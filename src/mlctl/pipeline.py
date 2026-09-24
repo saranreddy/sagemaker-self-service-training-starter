@@ -4,12 +4,9 @@ import hashlib
 import json
 import os
 import subprocess
-import tarfile
-import tempfile
 from pathlib import Path
 from typing import Dict, Any, Optional
 
-import boto3
 from botocore.exceptions import ClientError
 
 
@@ -53,9 +50,7 @@ class PipelineBuilder:
 
     def _build_training_step(self) -> Dict[str, Any]:
         """Build training step with proper script mode."""
-        from mlctl.image_uris import get_training_image_uri
-
-        training_image = get_training_image_uri(
+        training_image = self.config.resolve_training_image_uri(
             self.ml_config["framework"], self.region
         )
         execution_role = self.config.get_execution_role(self.ml_config.get("team"))
@@ -145,9 +140,9 @@ class PipelineBuilder:
 
     def _build_evaluation_step(self) -> Dict[str, Any]:
         """Build evaluation processing step with PropertyFiles."""
-        from mlctl.image_uris import get_training_image_uri
-
-        eval_image = get_training_image_uri(self.ml_config["framework"], self.region)
+        eval_image = self.config.resolve_training_image_uri(
+            self.ml_config["framework"], self.region
+        )
         execution_role = self.config.get_execution_role(self.ml_config.get("team"))
         artifact_bucket = self._get_artifact_bucket()
         # Use provided s3_prefix (set by submit.py) or generate default
@@ -303,9 +298,7 @@ class PipelineBuilder:
 
     def _build_register_model_step(self) -> Dict[str, Any]:
         """Build model registration step."""
-        from mlctl.image_uris import get_inference_image_uri
-
-        inference_image = get_inference_image_uri(
+        inference_image = self.config.resolve_inference_image_uri(
             self.ml_config["framework"], self.region
         )
         model_package_group_name = f"{self.project_name}-models"
@@ -490,7 +483,11 @@ class PipelineBuilder:
                 RoleArn=execution_role,
             )
 
-            return response["PipelineArn"]
+            # Re-tag pipeline to ensure deployment tags are current
+            pipeline_arn = response["PipelineArn"]
+            sagemaker_client.add_tags(ResourceArn=pipeline_arn, Tags=self._build_tags())
+
+            return pipeline_arn
 
         except ClientError as e:
             if e.response["Error"]["Code"] == "ResourceNotFound":

@@ -1,7 +1,6 @@
 """List all projects and their status."""
 
 import sys
-from collections import defaultdict
 
 import boto3
 import click
@@ -57,7 +56,7 @@ def list_projects():
                     last_status = exec_response["PipelineExecutionSummaries"][0][
                         "PipelineExecutionStatus"
                     ]
-            except:
+            except Exception:
                 pass
 
             model_version = "N/A"
