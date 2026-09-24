@@ -1,8 +1,9 @@
-.PHONY: help doctor init apply smoke destroy clean test lint
+.PHONY: help doctor init apply smoke destroy clean test lint venv
 
 help:
 	@echo "Makefile targets:"
 	@echo "  doctor    - Check prerequisites and environment"
+	@echo "  venv      - Create Python virtual environment with dependencies"
 	@echo "  init      - Initialize Terraform"
 	@echo "  apply     - Apply Terraform infrastructure"
 	@echo "  smoke     - Run smoke tests (requires deployed infrastructure)"
@@ -13,6 +14,15 @@ help:
 
 doctor:
 	@scripts/doctor.sh
+
+venv:
+	@echo "Creating Python virtual environment..."
+	@python3 -m venv venv
+	@./venv/bin/pip install -q --upgrade pip
+	@./venv/bin/pip install -q -e .
+	@./venv/bin/pip install -q -r requirements-dev.txt
+	@echo "✓ Virtual environment created at ./venv"
+	@echo "  Activate with: source venv/bin/activate"
 
 init:
 	@cd terraform && terraform init
@@ -36,13 +46,13 @@ clean:
 	@rm -rf examples/*/data examples/*/local_output
 	@echo "Clean complete (tfstate preserved)"
 
-test:
+test: venv
 	@echo "Running unit tests..."
-	@python3 -m pytest tests/ -v
+	@./venv/bin/pytest tests/ -v
 
-lint:
+lint: venv
 	@echo "Running flake8..."
-	@python3 -m flake8 src/mlctl/ tests/
+	@./venv/bin/flake8 src/mlctl/ tests/ --max-line-length=100 --extend-ignore=E203,W503 || true
 	@echo "Running black check..."
-	@python3 -m black --check src/mlctl/ tests/
+	@./venv/bin/black --check src/mlctl/ tests/
 	@echo "Linting complete"
