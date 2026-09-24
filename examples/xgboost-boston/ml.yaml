@@ -1,0 +1,19 @@
+name: boston-housing
+team: data-science
+framework: xgboost
+instance_type: ml.m5.large
+
+data:
+  train: s3://your-bucket/data/boston/train/
+  validation: s3://your-bucket/data/boston/validation/
+
+hyperparameters:
+  max_depth: "5"
+  eta: "0.2"
+  objective: "reg:squarederror"
+  num_round: "100"
+
+quality_gate:
+  metric: rmse
+  threshold: 5.0
+  direction: minimize

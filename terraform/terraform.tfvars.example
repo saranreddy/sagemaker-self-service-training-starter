@@ -1,0 +1,8 @@
+# Example terraform.tfvars
+# Copy this file to terraform.tfvars and customize
+
+region       = "us-east-1"
+project_name = "sagemaker-self-service-training"
+
+# Optional: specify bucket name (otherwise auto-generated with account ID)
+# artifact_bucket_name = "my-org-sagemaker-artifacts"

@@ -1,0 +1,80 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["name", "team", "framework", "instance_type", "data", "hyperparameters", "quality_gate"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,62}[a-z0-9]$",
+      "description": "Project name (lowercase alphanumeric with hyphens, 2-64 chars)"
+    },
+    "team": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,62}[a-z0-9]$",
+      "description": "Team name"
+    },
+    "framework": {
+      "type": "string",
+      "enum": ["sklearn", "xgboost", "pytorch"],
+      "description": "ML framework"
+    },
+    "framework_version": {
+      "type": "string",
+      "description": "Override org default framework version"
+    },
+    "instance_type": {
+      "type": "string",
+      "pattern": "^ml\\.[a-z0-9]+\\.[a-z0-9]+$",
+      "description": "SageMaker instance type"
+    },
+    "data": {
+      "type": "object",
+      "required": ["train"],
+      "properties": {
+        "train": {
+          "type": "string",
+          "pattern": "^s3://",
+          "description": "S3 URI for training data"
+        },
+        "validation": {
+          "type": "string",
+          "pattern": "^s3://",
+          "description": "S3 URI for validation data"
+        },
+        "test": {
+          "type": "string",
+          "pattern": "^s3://",
+          "description": "S3 URI for test data"
+        }
+      }
+    },
+    "hyperparameters": {
+      "type": "object",
+      "description": "Training hyperparameters (all values as strings)"
+    },
+    "quality_gate": {
+      "type": "object",
+      "required": ["metric", "threshold", "direction"],
+      "properties": {
+        "metric": {
+          "type": "string",
+          "description": "Metric name from metrics.json"
+        },
+        "threshold": {
+          "type": "number",
+          "description": "Threshold value"
+        },
+        "direction": {
+          "type": "string",
+          "enum": ["maximize", "minimize"],
+          "description": "Whether to maximize or minimize the metric"
+        }
+      }
+    },
+    "enable_preprocessing": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether to run preprocess.py before training"
+    }
+  }
+}
