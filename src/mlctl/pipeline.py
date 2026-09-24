@@ -326,9 +326,15 @@ class PipelineBuilder:
             "Team": self._sanitize_tag_value(self.ml_config["team"]),
             "Framework": self._sanitize_tag_value(self.ml_config["framework"]),
             "Owner": self._sanitize_tag_value(self.ml_config.get("owner", "mlctl")),
-            "QualityGateMetric": self._sanitize_tag_value(self.ml_config["quality_gate"]["metric"]),
-            "QualityGateThreshold": self._sanitize_tag_value(str(self.ml_config["quality_gate"]["threshold"])),
-            "QualityGateDirection": self._sanitize_tag_value(self.ml_config["quality_gate"]["direction"]),
+            "QualityGateMetric": self._sanitize_tag_value(
+                self.ml_config["quality_gate"]["metric"]
+            ),
+            "QualityGateThreshold": self._sanitize_tag_value(
+                str(self.ml_config["quality_gate"]["threshold"])
+            ),
+            "QualityGateDirection": self._sanitize_tag_value(
+                self.ml_config["quality_gate"]["direction"]
+            ),
         }
 
         # Add ml.yaml S3 URI if available
@@ -408,7 +414,10 @@ class PipelineBuilder:
         tags = [
             {"Key": "Project", "Value": self._sanitize_tag_value(self.project_name)},
             {"Key": "Team", "Value": self._sanitize_tag_value(self.ml_config["team"])},
-            {"Key": "Owner", "Value": self._sanitize_tag_value(self.ml_config.get("owner", "mlctl"))},
+            {
+                "Key": "Owner",
+                "Value": self._sanitize_tag_value(self.ml_config.get("owner", "mlctl")),
+            },
             {"Key": "ManagedBy", "Value": "mlctl"},
         ]
 
@@ -427,14 +436,14 @@ class PipelineBuilder:
     @staticmethod
     def _sanitize_tag_value(value: str) -> str:
         """Sanitize tag value to match AWS tag requirements.
-        
+
         AWS tags allow only: letters, numbers, spaces, and + - = . _ : / @
         Keys max 128 chars, values max 256 chars.
         """
         if not value:
             return value
         # Replace disallowed characters with hyphen
-        sanitized = re.sub(r'[^a-zA-Z0-9\s+\-=._:/@]', '-', str(value))
+        sanitized = re.sub(r"[^a-zA-Z0-9\s+\-=._:/@]", "-", str(value))
         # Truncate to 256 chars (tag value limit)
         return sanitized[:256]
 
@@ -520,14 +529,18 @@ class PipelineBuilder:
     def start_pipeline_execution(self, sagemaker_client) -> str:
         """Start a pipeline execution."""
         sanitized_project = self._sanitize_tag_value(self.project_name)
-        
+
         # Use content hash as identifier if not in git repo
         if self.git_commit == "none":
             # Use first 8 chars of code_s3_prefix hash as identifier
-            identifier = self.code_s3_prefix.split('-')[-1][:8] if self.code_s3_prefix and '-' in self.code_s3_prefix else "nogit"
+            identifier = (
+                self.code_s3_prefix.split("-")[-1][:8]
+                if self.code_s3_prefix and "-" in self.code_s3_prefix
+                else "nogit"
+            )
         else:
             identifier = self._sanitize_tag_value(self.git_commit[:8])
-        
+
         response = sagemaker_client.start_pipeline_execution(
             PipelineName=self.pipeline_name,
             PipelineExecutionDisplayName=f"{sanitized_project}-{identifier}",
