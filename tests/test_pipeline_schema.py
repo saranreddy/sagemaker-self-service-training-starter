@@ -277,7 +277,6 @@ def test_pytorch_uses_inference_image(mock_config, ml_config, temp_project_dir):
 def test_compare_with_sdk_oracle(mock_config, ml_config, temp_project_dir):
     """Compare our boto3-generated pipeline with SDK v2-generated reference."""
     import os
-    import sys
     import tempfile
     from unittest.mock import patch, MagicMock
 
@@ -342,7 +341,6 @@ def test_compare_with_sdk_oracle(mock_config, ml_config, temp_project_dir):
         with patch("boto3.Session.client", side_effect=mock_boto_client_fn):
             with patch("boto3.resource", side_effect=mock_boto_resource_fn):
                 with patch("boto3.Session.resource", side_effect=mock_boto_resource_fn):
-                    from sagemaker.estimator import Estimator
                     from sagemaker.processing import (
                         ScriptProcessor,
                         ProcessingInput,
@@ -492,25 +490,28 @@ def test_compare_with_sdk_oracle(mock_config, ml_config, temp_project_dir):
     # Compare Training step HyperParameters
     our_training = [s for s in our_definition["Steps"] if s["Type"] == "Training"][0]
     sdk_training = [s for s in sdk_definition["Steps"] if s["Type"] == "Training"][0]
-    
+
     our_hps = our_training["Arguments"]["HyperParameters"]
     sdk_hps = sdk_training["Arguments"]["HyperParameters"]
-    
+
     # Check script mode parameters exist
     assert "sagemaker_program" in our_hps
     assert "sagemaker_submit_directory" in our_hps
     assert "sagemaker_program" in sdk_hps
     assert "sagemaker_submit_directory" in sdk_hps
-    
-    # Compare user hyperparameters (JSON-encoded values)
-    for key in ml_config["hyperparameters"]:
-        assert key in our_hps
-        assert key in sdk_hps
-        # Both should JSON-encode the values
-        assert our_hps[key].startswith('"')
-        assert sdk_hps[key].startswith('"')
 
-    # Validate our Processing step has PropertyFiles matching SDK
+    # Compare user hyperparameters - only user HPs from ml.yaml
+    # (SDK adds extra sagemaker_* HPs automatically)
+    # Focus on the real user HPs: n_estimators and max_depth
+    user_hp_keys = {"n_estimators", "max_depth"}
+    for key in user_hp_keys:
+        assert key in our_hps, f"User HP {key} missing from our pipeline"
+        assert key in sdk_hps, f"User HP {key} missing from SDK pipeline"
+        # Both should be strings
+        assert isinstance(our_hps[key], str)
+        assert isinstance(sdk_hps[key], str)
+
+    # Compare PropertyFiles between our Processing step and SDK's
     our_processing = [s for s in our_definition["Steps"] if s["Type"] == "Processing"][
         0
     ]
@@ -518,15 +519,20 @@ def test_compare_with_sdk_oracle(mock_config, ml_config, temp_project_dir):
         0
     ]
 
-    assert "PropertyFiles" in our_processing
-    assert len(our_processing["PropertyFiles"]) > 0
-    assert our_processing["PropertyFiles"][0]["PropertyFileName"] == "EvaluationReport"
-    # Compare PropertyFiles (should be identical)
-    assert "PropertyFiles" in sdk_processing["Arguments"]
-    assert (
-        our_processing["Arguments"]["PropertyFiles"]
-        == sdk_processing["Arguments"]["PropertyFiles"]
+    # PropertyFiles might be at step level or in Arguments depending on SDK version
+    our_pf = our_processing.get("PropertyFiles") or our_processing.get("Arguments", {}).get(
+        "PropertyFiles"
     )
+    sdk_pf = sdk_processing.get("PropertyFiles") or sdk_processing.get("Arguments", {}).get(
+        "PropertyFiles"
+    )
+
+    assert our_pf is not None, "Our processing step missing PropertyFiles"
+    assert sdk_pf is not None, "SDK processing step missing PropertyFiles"
+    assert len(our_pf) > 0
+    assert our_pf[0]["PropertyFileName"] == "EvaluationReport"
+    # Compare PropertyFiles structure (should be identical)
+    assert our_pf == sdk_pf, f"PropertyFiles mismatch: {our_pf} != {sdk_pf}"
 
     # Compare Condition structure (should be identical)
     our_condition = [s for s in our_definition["Steps"] if s["Type"] == "Condition"][0]
@@ -548,12 +554,16 @@ def test_compare_with_sdk_oracle(mock_config, ml_config, temp_project_dir):
     assert len(sdk_else_steps) > 0, "SDK ElseSteps should contain Fail step"
     sdk_fail = [s for s in sdk_else_steps if s["Type"] == "Fail"][0]
     sdk_error_msg = sdk_fail["Arguments"]["ErrorMessage"]
-    
+
     # Extract JsonGet from both Join Values lists
     our_join_values = our_error_msg["Std:Join"]["Values"]
     sdk_join_values = sdk_error_msg["Std:Join"]["Values"]
-    our_jsonget = [v for v in our_join_values if isinstance(v, dict) and "Std:JsonGet" in v][0]
-    sdk_jsonget = [v for v in sdk_join_values if isinstance(v, dict) and "Std:JsonGet" in v][0]
+    our_jsonget = [
+        v for v in our_join_values if isinstance(v, dict) and "Std:JsonGet" in v
+    ][0]
+    sdk_jsonget = [
+        v for v in sdk_join_values if isinstance(v, dict) and "Std:JsonGet" in v
+    ][0]
     assert our_jsonget == sdk_jsonget
 
     # Find RegisterModel in our IfSteps

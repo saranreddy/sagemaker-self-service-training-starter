@@ -205,9 +205,7 @@ def submit(project_dir: str, org_config: str, skip_validation: bool, output: str
                 )
             )
         else:
-            console.print(
-                "[green bold]✓ Pipeline execution started[/green bold]"
-            )
+            console.print("[green bold]✓ Pipeline execution started[/green bold]")
             console.print(f"\n[cyan]Execution ARN:[/cyan]\n{execution_arn}")
             console.print(
                 f"\nMonitor with: mlctl status --execution-arn {execution_arn}"
