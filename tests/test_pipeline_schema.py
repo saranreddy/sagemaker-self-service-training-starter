@@ -282,6 +282,11 @@ def test_pytorch_uses_inference_image(mock_config, ml_config, temp_project_dir):
 @pytest.mark.skipif(not SDK_AVAILABLE, reason="SageMaker SDK not available")
 def test_compare_with_sdk_oracle(mock_config, ml_config, temp_project_dir):
     """Compare our boto3-generated pipeline with SDK v2-generated reference."""
+    import os
+
+    # Set AWS region for SDK (required even for offline usage)
+    os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
+
     from sagemaker.estimator import Estimator
     from sagemaker.processing import ScriptProcessor, ProcessingInput, ProcessingOutput
     from sagemaker.workflow.pipeline import Pipeline
