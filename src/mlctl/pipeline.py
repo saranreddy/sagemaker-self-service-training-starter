@@ -1,8 +1,11 @@
-"""SageMaker pipeline generation using boto3 (no SDK dependency)."""
-
+"""SageMaker pipeline generation with correct 2020-12-01 schema (boto3-only runtime)."""
+import hashlib
 import json
 import os
 import subprocess
+import tarfile
+import tempfile
+from pathlib import Path
 from typing import Dict, Any, Optional
 
 import boto3
@@ -10,22 +13,22 @@ from botocore.exceptions import ClientError
 
 
 class PipelineBuilder:
-    """Builds SageMaker pipeline definitions directly with boto3."""
+    """Builds SageMaker pipeline definitions with correct schema."""
 
-    def __init__(self, config, ml_config: Dict[str, Any], region: str, account: str):
+    def __init__(
+        self, config, ml_config: Dict[str, Any], region: str, project_dir: str = "."
+    ):
         self.config = config
         self.ml_config = ml_config
         self.region = region
-        self.account = account
+        self.project_dir = Path(project_dir)
         self.pipeline_name = f"{ml_config['name']}-pipeline"
+        self.project_name = ml_config["name"]
+        self.git_commit = self._get_git_commit()
 
     def build_pipeline_definition(self) -> Dict[str, Any]:
-        """Build complete pipeline definition JSON."""
+        """Build complete pipeline definition JSON with correct schema."""
         steps = []
-
-        if self.ml_config.get("enable_preprocessing", False):
-            preprocess_step = self._build_preprocessing_step()
-            steps.append(preprocess_step)
 
         training_step = self._build_training_step()
         steps.append(training_step)
@@ -38,58 +41,75 @@ class PipelineBuilder:
 
         pipeline_def = {
             "Version": "2020-12-01",
-            "Parameters": self._build_parameters(),
+            "Metadata": {},
+            "Parameters": [],
+            "PipelineExperimentConfig": {
+                "ExperimentName": {"Get": "Execution.PipelineName"},
+                "TrialName": {"Get": "Execution.PipelineExecutionId"},
+            },
             "Steps": steps,
         }
 
         return pipeline_def
 
-    def _build_parameters(self) -> list:
-        """Build pipeline parameters."""
-        return [
-            {
-                "Name": "InputDataUri",
-                "Type": "String",
-                "DefaultValue": self.ml_config["data"]["train"],
-            }
-        ]
-
     def _build_training_step(self) -> Dict[str, Any]:
-        """Build training step."""
-        framework = self.ml_config["framework"]
-        container_uri = self.config.resolve_container_uri(
-            framework, self.region, self.account
+        """Build training step with proper script mode."""
+        from mlctl.image_uris import get_training_image_uri
+
+        training_image = get_training_image_uri(
+            self.ml_config["framework"], self.region
         )
         execution_role = self.config.get_execution_role(self.ml_config.get("team"))
+        artifact_bucket = self._get_artifact_bucket()
 
-        hyperparameters_str = {
-            k: str(v) for k, v in self.ml_config.get("hyperparameters", {}).items()
+        # Script mode hyperparameters (must be JSON-encoded strings)
+        hyperparameters = {}
+        for k, v in self.ml_config.get("hyperparameters", {}).items():
+            hyperparameters[k] = json.dumps(v)
+
+        # Add required script mode hyperparameters
+        code_s3_prefix = self._get_code_s3_prefix()
+        hyperparameters["sagemaker_program"] = json.dumps("train.py")
+        hyperparameters["sagemaker_submit_directory"] = json.dumps(
+            f"s3://{artifact_bucket}/{code_s3_prefix}/sourcedir.tar.gz"
+        )
+        hyperparameters["sagemaker_region"] = json.dumps(self.region)
+
+        # Use ExecutionVariables for unique output paths
+        output_path = {
+            "Std:Join": {
+                "On": "/",
+                "Values": [
+                    f"s3://{artifact_bucket}/pipelines",
+                    {"Get": "Execution.PipelineExecutionId"},
+                    self.project_name,
+                    "output",
+                ],
+            }
         }
-
-        git_commit = self._get_git_commit()
 
         step = {
             "Name": "TrainModel",
             "Type": "Training",
             "Arguments": {
                 "AlgorithmSpecification": {
-                    "TrainingImage": container_uri,
+                    "TrainingImage": training_image,
                     "TrainingInputMode": "File",
                 },
                 "RoleArn": execution_role,
-                "OutputDataConfig": {
-                    "S3OutputPath": f"s3://{self._get_artifact_bucket()}/output"
-                },
+                "OutputDataConfig": {"S3OutputPath": output_path},
                 "ResourceConfig": {
                     "InstanceType": self.ml_config["instance_type"],
                     "InstanceCount": 1,
                     "VolumeSizeInGB": 30,
                 },
-                "StoppingCondition": {"MaxRuntimeInSeconds": 86400},
-                "HyperParameters": hyperparameters_str,
+                "StoppingCondition": {
+                    "MaxRuntimeInSeconds": self.ml_config.get("max_runtime_seconds", 3600)
+                },
+                "HyperParameters": hyperparameters,
                 "InputDataConfig": [
                     {
-                        "ChannelName": "train",
+                        "ChannelName": "training",
                         "DataSource": {
                             "S3DataSource": {
                                 "S3DataType": "S3Prefix",
@@ -99,11 +119,12 @@ class PipelineBuilder:
                         },
                     }
                 ],
-                "Environment": {"GIT_COMMIT": git_commit},
+                "Environment": {"GIT_COMMIT": self.git_commit},
                 "Tags": self._build_tags(),
             },
         }
 
+        # Add validation channel if configured
         if "validation" in self.ml_config["data"]:
             step["Arguments"]["InputDataConfig"].append(
                 {
@@ -121,12 +142,65 @@ class PipelineBuilder:
         return step
 
     def _build_evaluation_step(self) -> Dict[str, Any]:
-        """Build evaluation processing step."""
-        framework = self.ml_config["framework"]
-        container_uri = self.config.resolve_container_uri(
-            framework, self.region, self.account
-        )
+        """Build evaluation processing step with PropertyFiles."""
+        from mlctl.image_uris import get_training_image_uri
+
+        eval_image = get_training_image_uri(self.ml_config["framework"], self.region)
         execution_role = self.config.get_execution_role(self.ml_config.get("team"))
+        artifact_bucket = self._get_artifact_bucket()
+        code_s3_prefix = self._get_code_s3_prefix()
+
+        eval_output_path = {
+            "Std:Join": {
+                "On": "/",
+                "Values": [
+                    f"s3://{artifact_bucket}/pipelines",
+                    {"Get": "Execution.PipelineExecutionId"},
+                    self.project_name,
+                    "evaluation",
+                ],
+            }
+        }
+
+        # Test data: use test if configured, else validation
+        test_data_uri = self.ml_config["data"].get(
+            "test", self.ml_config["data"].get("validation")
+        )
+
+        processing_inputs = [
+            {
+                "InputName": "model",
+                "S3Input": {
+                    "S3Uri": {"Get": "Steps.TrainModel.ModelArtifacts.S3ModelArtifacts"},
+                    "LocalPath": "/opt/ml/processing/model",
+                    "S3DataType": "S3Prefix",
+                    "S3InputMode": "File",
+                },
+            },
+            {
+                "InputName": "code",
+                "S3Input": {
+                    "S3Uri": f"s3://{artifact_bucket}/{code_s3_prefix}/evaluation.tar.gz",
+                    "LocalPath": "/opt/ml/processing/input/code",
+                    "S3DataType": "S3Prefix",
+                    "S3InputMode": "File",
+                },
+            },
+        ]
+
+        # Add test data if available
+        if test_data_uri:
+            processing_inputs.append(
+                {
+                    "InputName": "test",
+                    "S3Input": {
+                        "S3Uri": test_data_uri,
+                        "LocalPath": "/opt/ml/processing/test",
+                        "S3DataType": "S3Prefix",
+                        "S3InputMode": "File",
+                    },
+                }
+            )
 
         step = {
             "Name": "EvaluateModel",
@@ -140,41 +214,20 @@ class PipelineBuilder:
                     }
                 },
                 "AppSpecification": {
-                    "ImageUri": container_uri,
+                    "ImageUri": eval_image,
                     "ContainerEntrypoint": [
-                        "python3",
-                        "/opt/ml/processing/input/code/evaluate.py",
+                        "/bin/bash",
+                        "/opt/ml/processing/input/code/evaluate_entrypoint.sh",
                     ],
                 },
                 "RoleArn": execution_role,
-                "ProcessingInputs": [
-                    {
-                        "InputName": "model",
-                        "S3Input": {
-                            "S3Uri": {
-                                "Get": "Steps.TrainModel.ModelArtifacts.S3ModelArtifacts"
-                            },
-                            "LocalPath": "/opt/ml/processing/model",
-                            "S3DataType": "S3Prefix",
-                            "S3InputMode": "File",
-                        },
-                    },
-                    {
-                        "InputName": "code",
-                        "S3Input": {
-                            "S3Uri": f"s3://{self._get_artifact_bucket()}/code/evaluate.py",
-                            "LocalPath": "/opt/ml/processing/input/code",
-                            "S3DataType": "S3Prefix",
-                            "S3InputMode": "File",
-                        },
-                    },
-                ],
+                "ProcessingInputs": processing_inputs,
                 "ProcessingOutputConfig": {
                     "Outputs": [
                         {
                             "OutputName": "evaluation",
                             "S3Output": {
-                                "S3Uri": f"s3://{self._get_artifact_bucket()}/evaluation",
+                                "S3Uri": eval_output_path,
                                 "LocalPath": "/opt/ml/processing/evaluation",
                                 "S3UploadMode": "EndOfJob",
                             },
@@ -183,98 +236,51 @@ class PipelineBuilder:
                 },
                 "Tags": self._build_tags(),
             },
-            "DependsOn": ["TrainModel"],
-        }
-
-        if "test" in self.ml_config["data"]:
-            step["Arguments"]["ProcessingInputs"].append(
+            "PropertyFiles": [
                 {
-                    "InputName": "test",
-                    "S3Input": {
-                        "S3Uri": self.ml_config["data"]["test"],
-                        "LocalPath": "/opt/ml/processing/test",
-                        "S3DataType": "S3Prefix",
-                        "S3InputMode": "File",
-                    },
+                    "PropertyFileName": "EvaluationReport",
+                    "OutputName": "evaluation",
+                    "FilePath": "metrics.json",
                 }
-            )
+            ],
+        }
 
         return step
 
-    def _build_preprocessing_step(self) -> Dict[str, Any]:
-        """Build preprocessing step (optional)."""
-        framework = self.ml_config["framework"]
-        container_uri = self.config.resolve_container_uri(
-            framework, self.region, self.account
-        )
-        execution_role = self.config.get_execution_role(self.ml_config.get("team"))
-
-        return {
-            "Name": "PreprocessData",
-            "Type": "Processing",
-            "Arguments": {
-                "ProcessingResources": {
-                    "ClusterConfig": {
-                        "InstanceType": self.ml_config["instance_type"],
-                        "InstanceCount": 1,
-                        "VolumeSizeInGB": 30,
-                    }
-                },
-                "AppSpecification": {
-                    "ImageUri": container_uri,
-                    "ContainerEntrypoint": [
-                        "python3",
-                        "/opt/ml/processing/input/code/preprocess.py",
-                    ],
-                },
-                "RoleArn": execution_role,
-                "ProcessingInputs": [
-                    {
-                        "InputName": "input",
-                        "S3Input": {
-                            "S3Uri": self.ml_config["data"]["train"],
-                            "LocalPath": "/opt/ml/processing/input",
-                            "S3DataType": "S3Prefix",
-                            "S3InputMode": "File",
-                        },
-                    },
-                    {
-                        "InputName": "code",
-                        "S3Input": {
-                            "S3Uri": f"s3://{self._get_artifact_bucket()}/code/preprocess.py",
-                            "LocalPath": "/opt/ml/processing/input/code",
-                            "S3DataType": "S3Prefix",
-                            "S3InputMode": "File",
-                        },
-                    },
-                ],
-                "ProcessingOutputConfig": {
-                    "Outputs": [
-                        {
-                            "OutputName": "train",
-                            "S3Output": {
-                                "S3Uri": f"s3://{self._get_artifact_bucket()}/preprocessed/train",
-                                "LocalPath": "/opt/ml/processing/train",
-                                "S3UploadMode": "EndOfJob",
-                            },
-                        }
-                    ]
-                },
-                "Tags": self._build_tags(),
-            },
-        }
-
     def _build_condition_step(self) -> Dict[str, Any]:
-        """Build condition step with quality gate."""
+        """Build condition step with correct Std:JsonGet structure."""
         quality_gate = self.ml_config["quality_gate"]
         metric_name = quality_gate["metric"]
         threshold = quality_gate["threshold"]
         direction = quality_gate["direction"]
 
+        # Build condition with correct schema
         if direction == "maximize":
-            operator = "GreaterThanOrEqualTo"
-        else:
-            operator = "LessThanOrEqualTo"
+            condition = {
+                "Type": "GreaterThanOrEqualTo",
+                "LeftValue": {
+                    "Std:JsonGet": {
+                        "PropertyFile": {
+                            "Get": "Steps.EvaluateModel.PropertyFiles.EvaluationReport"
+                        },
+                        "Path": metric_name,
+                    }
+                },
+                "RightValue": threshold,
+            }
+        else:  # minimize
+            condition = {
+                "Type": "LessThanOrEqualTo",
+                "LeftValue": {
+                    "Std:JsonGet": {
+                        "PropertyFile": {
+                            "Get": "Steps.EvaluateModel.PropertyFiles.EvaluationReport"
+                        },
+                        "Path": metric_name,
+                    }
+                },
+                "RightValue": threshold,
+            }
 
         register_step = self._build_register_model_step()
         fail_step = self._build_fail_step()
@@ -283,30 +289,47 @@ class PipelineBuilder:
             "Name": "QualityGateCheck",
             "Type": "Condition",
             "Arguments": {
-                "Conditions": [
-                    {
-                        "Type": "JsonGet",
-                        "JsonPath": f"$.{metric_name}",
-                        "PropertyFile": {
-                            "PropertyFileName": "EvaluationReport",
-                            "S3Uri": {
-                                "Get": "Steps.EvaluateModel.ProcessingOutputConfig.Outputs['evaluation'].S3Output.S3Uri"
-                            },
-                            "FilePath": "metrics.json",
-                        },
-                        operator: threshold,
-                    }
-                ],
+                "Conditions": [condition],
                 "IfSteps": [register_step],
                 "ElseSteps": [fail_step],
             },
-            "DependsOn": ["EvaluateModel"],
         }
 
     def _build_register_model_step(self) -> Dict[str, Any]:
         """Build model registration step."""
-        execution_role = self.config.get_execution_role(self.ml_config.get("team"))
-        model_package_group_name = f"{self.ml_config['name']}-models"
+        from mlctl.image_uris import get_inference_image_uri
+
+        inference_image = get_inference_image_uri(
+            self.ml_config["framework"], self.region
+        )
+        model_package_group_name = f"{self.project_name}-models"
+        artifact_bucket = self._get_artifact_bucket()
+
+        # Build metrics S3 URI pointing to metrics.json
+        metrics_s3_uri = {
+            "Std:Join": {
+                "On": "/",
+                "Values": [
+                    f"s3://{artifact_bucket}/pipelines",
+                    {"Get": "Execution.PipelineExecutionId"},
+                    self.project_name,
+                    "evaluation",
+                    "metrics.json",
+                ],
+            }
+        }
+
+        # Customer metadata with ml.yaml and git commit
+        customer_metadata = {
+            "GitCommit": self.git_commit,
+            "ProjectName": self.project_name,
+            "Team": self.ml_config["team"],
+            "Framework": self.ml_config["framework"],
+            "Owner": self.ml_config.get("owner", "mlctl"),
+            "QualityGateMetric": self.ml_config["quality_gate"]["metric"],
+            "QualityGateThreshold": str(self.ml_config["quality_gate"]["threshold"]),
+            "QualityGateDirection": self.ml_config["quality_gate"]["direction"],
+        }
 
         return {
             "Name": "RegisterModel",
@@ -317,63 +340,73 @@ class PipelineBuilder:
                 "InferenceSpecification": {
                     "Containers": [
                         {
-                            "Image": self.config.resolve_container_uri(
-                                self.ml_config["framework"], self.region, self.account
-                            ),
+                            "Image": inference_image,
                             "ModelDataUrl": {
                                 "Get": "Steps.TrainModel.ModelArtifacts.S3ModelArtifacts"
                             },
                         }
                     ],
-                    "SupportedContentTypes": ["application/json"],
+                    "SupportedContentTypes": ["application/json", "text/csv"],
                     "SupportedResponseMIMETypes": ["application/json"],
                     "SupportedRealtimeInferenceInstanceTypes": [
                         "ml.t2.medium",
                         "ml.m5.large",
+                        "ml.m5.xlarge",
                     ],
                 },
                 "ModelMetrics": {
                     "ModelQuality": {
                         "Statistics": {
                             "ContentType": "application/json",
-                            "S3Uri": {
-                                "Get": "Steps.EvaluateModel.ProcessingOutputConfig.Outputs['evaluation'].S3Output.S3Uri"
-                            },
+                            "S3Uri": metrics_s3_uri,
                         }
                     }
                 },
-                "CustomerMetadataProperties": {
-                    "GitCommit": self._get_git_commit(),
-                    "ProjectName": self.ml_config["name"],
-                    "Team": self.ml_config["team"],
-                    "Framework": self.ml_config["framework"],
-                },
+                "CustomerMetadataProperties": customer_metadata,
                 "Tags": self._build_tags(),
             },
         }
 
     def _build_fail_step(self) -> Dict[str, Any]:
-        """Build fail step for quality gate failure."""
+        """Build fail step with dynamic message using Std:Join."""
         quality_gate = self.ml_config["quality_gate"]
+        metric_name = quality_gate["metric"]
+        threshold = quality_gate["threshold"]
+        direction = quality_gate["direction"]
 
-        message = (
-            f"Model quality gate failed. "
-            f"Metric '{quality_gate['metric']}' did not meet threshold {quality_gate['threshold']} "
-            f"(direction: {quality_gate['direction']})."
-        )
+        # Build dynamic error message with actual metric value
+        error_message = {
+            "Std:Join": {
+                "On": "",
+                "Values": [
+                    f"Quality gate failed. Metric '{metric_name}' did not meet threshold ",
+                    str(threshold),
+                    f" (direction: {direction}). Actual value: ",
+                    {
+                        "Std:JsonGet": {
+                            "PropertyFile": {
+                                "Get": "Steps.EvaluateModel.PropertyFiles.EvaluationReport"
+                            },
+                            "Path": metric_name,
+                        }
+                    },
+                ],
+            }
+        }
 
         return {
             "Name": "QualityGateFailed",
             "Type": "Fail",
-            "Arguments": {"ErrorMessage": message},
+            "Arguments": {"ErrorMessage": error_message},
         }
 
     def _build_tags(self) -> list:
         """Build tags for resources."""
         tags = [
-            {"Key": "Project", "Value": self.ml_config["name"]},
+            {"Key": "Project", "Value": self.project_name},
             {"Key": "Team", "Value": self.ml_config["team"]},
-            {"Key": "Owner", "Value": "mlctl"},
+            {"Key": "Owner", "Value": self.ml_config.get("owner", "mlctl")},
+            {"Key": "ManagedBy", "Value": "mlctl"},
         ]
 
         for key, value in self.config.org_config.get("required_tags", {}).items():
@@ -393,20 +426,29 @@ class PipelineBuilder:
             )
         return bucket
 
+    def _get_code_s3_prefix(self) -> str:
+        """Get S3 prefix for code with content hash."""
+        code_hash = hashlib.sha256(self.git_commit.encode()).hexdigest()[:12]
+        return f"code/{self.project_name}/{self.git_commit[:8]}-{code_hash}"
+
     def _get_git_commit(self) -> str:
         """Get current git commit hash."""
         try:
             result = subprocess.run(
-                ["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True
+                ["git", "rev-parse", "HEAD"],
+                capture_output=True,
+                text=True,
+                check=True,
+                cwd=self.project_dir,
             )
             return result.stdout.strip()
-        except:
+        except Exception:
             return "unknown"
 
-    def create_or_update_pipeline(self) -> str:
+    def create_or_update_pipeline(
+        self, sagemaker_client
+    ) -> str:
         """Create or update the pipeline in SageMaker."""
-        sagemaker_client = boto3.client("sagemaker", region_name=self.region)
-
         pipeline_def = self.build_pipeline_definition()
         execution_role = self.config.get_execution_role(self.ml_config.get("team"))
 
@@ -434,13 +476,27 @@ class PipelineBuilder:
             else:
                 raise
 
-    def start_pipeline_execution(self) -> str:
+    def start_pipeline_execution(self, sagemaker_client) -> str:
         """Start a pipeline execution."""
-        sagemaker_client = boto3.client("sagemaker", region_name=self.region)
-
         response = sagemaker_client.start_pipeline_execution(
             PipelineName=self.pipeline_name,
-            PipelineExecutionDisplayName=f"{self.ml_config['name']}-{self._get_git_commit()[:8]}",
+            PipelineExecutionDisplayName=f"{self.project_name}-{self.git_commit[:8]}",
         )
 
         return response["PipelineExecutionArn"]
+
+    def ensure_model_package_group(self, sagemaker_client):
+        """Ensure model package group exists with proper tags."""
+        group_name = f"{self.project_name}-models"
+
+        try:
+            sagemaker_client.describe_model_package_group(
+                ModelPackageGroupName=group_name
+            )
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "ResourceNotFound":
+                sagemaker_client.create_model_package_group(
+                    ModelPackageGroupName=group_name,
+                    ModelPackageGroupDescription=f"Models for {self.project_name}",
+                    Tags=self._build_tags(),
+                )
