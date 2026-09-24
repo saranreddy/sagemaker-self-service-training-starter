@@ -52,15 +52,15 @@ test: venv
 
 lint:
 	@echo "Running flake8..."
-	@if [ -d venv ]; then \
+	@if [ -d venv ] && [ -f ./venv/bin/flake8 ]; then \
 		./venv/bin/flake8 src tests; \
 	else \
-		flake8 src tests; \
+		python3 -m flake8 src tests; \
 	fi
 	@echo "Running black check..."
-	@if [ -d venv ]; then \
+	@if [ -d venv ] && [ -f ./venv/bin/black ]; then \
 		./venv/bin/black --check src tests; \
 	else \
-		black --check src tests; \
+		python3 -m black --check src tests; \
 	fi
 	@echo "Linting complete"
