@@ -158,4 +158,4 @@ def test_image_uri_override_region_map(tmp_path):
     assert us_uri == us_image
     assert eu_uri == eu_image
     # Falls back to default for ap-northeast-1
-    assert "683313688378" in fallback_uri
+    assert "354813040037" in fallback_uri

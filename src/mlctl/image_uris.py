@@ -1,7 +1,7 @@
 """SageMaker container image URIs by region and framework."""
 
 # sklearn/xgboost account IDs per region
-# Source: https://docs.aws.amazon.com/sagemaker/latest/dg/pre-built-containers-frameworks-deep-learning.html
+# Source: https://docs.aws.amazon.com/sagemaker/latest/dg/pre-built-containers-frameworks-deep-learning.html  # noqa: E501
 SKLEARN_XGBOOST_ACCOUNTS = {
     "us-east-1": "683313688378",
     "us-east-2": "257758044811",
@@ -32,7 +32,7 @@ def get_training_image_uri(framework: str, region: str) -> str:
         account = SKLEARN_XGBOOST_ACCOUNTS[region]
 
         uris = {
-            "sklearn": f"{account}.dkr.ecr.{region}.amazonaws.com/sagemaker-scikit-learn:1.2-1-cpu-py3",
+            "sklearn": f"{account}.dkr.ecr.{region}.amazonaws.com/sagemaker-scikit-learn:1.2-1-cpu-py3",  # noqa: E501
             "xgboost": f"{account}.dkr.ecr.{region}.amazonaws.com/sagemaker-xgboost:1.7-1",
         }
 
