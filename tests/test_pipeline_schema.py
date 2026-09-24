@@ -288,6 +288,7 @@ def test_compare_with_sdk_oracle(mock_config, ml_config, temp_project_dir):
     # Create temp files for SDK code requirements
     with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
         f.write("# training script")
+        train_code_file = f.name  # noqa: F841
     with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
         f.write("# evaluation script")
         eval_code_file = f.name
@@ -345,7 +346,8 @@ def test_compare_with_sdk_oracle(mock_config, ml_config, temp_project_dir):
                     from sagemaker.workflow.condition_step import ConditionStep
                     from sagemaker.workflow.functions import JsonGet
                     from sagemaker.workflow.fail_step import FailStep
-                    from sagemaker.workflow.model_step import ModelStep
+                    from sagemaker.workflow.model_step import ModelStep  # noqa: F401
+                    from sagemaker.workflow.pipeline_context import PipelineSession
 
                     session = PipelineSession(default_bucket=bucket)
 
