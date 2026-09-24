@@ -206,7 +206,7 @@ def submit(project_dir: str, org_config: str, skip_validation: bool, output: str
             )
         else:
             console.print(
-                f"[green bold]✓ Pipeline execution started[/green bold]"
+                f"[green bold]✓ Pipeline execution started[/green bold]"  # noqa: F541
             )  # noqa:F541
             console.print(f"\n[cyan]Execution ARN:[/cyan]\n{execution_arn}")
             console.print(

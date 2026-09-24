@@ -150,7 +150,7 @@ def main():
     print(f"Training for {args.epochs} epochs...")
 
     for epoch in range(1, args.epochs + 1):
-        train_loss = train_epoch(
+        train_loss = train_epoch(  # noqa: F841
             model, device, train_loader, optimizer, epoch
         )  # noqa: F841
 
