@@ -277,12 +277,19 @@ def test_pytorch_uses_inference_image(mock_config, ml_config, temp_project_dir):
 def test_compare_with_sdk_oracle(mock_config, ml_config, temp_project_dir):
     """Compare our boto3-generated pipeline with SDK v2-generated reference."""
     import os
+    import sys
     import tempfile
     from unittest.mock import patch, MagicMock
 
-    # In CI, fail if SDK is not available; locally, skip gracefully
+    # In CI, fail if SDK is not available (except Python 3.12 which has distutils issue)
     if not SDK_AVAILABLE:
-        if os.environ.get("CI"):
+        # Python 3.12 removed distutils which sagemaker SDK requires; skip in CI
+        if sys.version_info >= (3, 12) and os.environ.get("CI"):
+            pytest.skip(
+                "Skipping SDK oracle test in Python 3.12 CI (sagemaker requires distutils, "
+                "removed in Python 3.12)"
+            )
+        elif os.environ.get("CI"):
             pytest.fail(
                 f"SageMaker SDK not available in CI - required for SDK oracle test. "
                 f"Import error: {SDK_IMPORT_ERROR}"
