@@ -24,7 +24,7 @@ def parse_args():
         "--model-dir", type=str, default=os.environ.get("SM_MODEL_DIR", "/opt/ml/model")
     )
     parser.add_argument(
-        "--train",
+        "--training",
         type=str,
         default=os.environ.get("SM_CHANNEL_TRAINING", "/opt/ml/input/data/training"),
     )
@@ -54,7 +54,7 @@ def main():
     args = parse_args()
 
     print("Loading training data...")
-    X_train, y_train = load_data(args.train)
+    X_train, y_train = load_data(args.training)
     print(f"Training data shape: {X_train.shape}")
 
     print("\nTraining Random Forest classifier...")

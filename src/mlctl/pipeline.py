@@ -3,6 +3,7 @@
 import hashlib
 import json
 import os
+import re
 import subprocess
 from pathlib import Path
 from typing import Any, Dict
@@ -320,14 +321,20 @@ class PipelineBuilder:
 
         # Customer metadata with ml.yaml and git commit
         customer_metadata = {
-            "GitCommit": self.git_commit,
-            "ProjectName": self.project_name,
-            "Team": self.ml_config["team"],
-            "Framework": self.ml_config["framework"],
-            "Owner": self.ml_config.get("owner", "mlctl"),
-            "QualityGateMetric": self.ml_config["quality_gate"]["metric"],
-            "QualityGateThreshold": str(self.ml_config["quality_gate"]["threshold"]),
-            "QualityGateDirection": self.ml_config["quality_gate"]["direction"],
+            "GitCommit": self._sanitize_tag_value(self.git_commit),
+            "ProjectName": self._sanitize_tag_value(self.project_name),
+            "Team": self._sanitize_tag_value(self.ml_config["team"]),
+            "Framework": self._sanitize_tag_value(self.ml_config["framework"]),
+            "Owner": self._sanitize_tag_value(self.ml_config.get("owner", "mlctl")),
+            "QualityGateMetric": self._sanitize_tag_value(
+                self.ml_config["quality_gate"]["metric"]
+            ),
+            "QualityGateThreshold": self._sanitize_tag_value(
+                str(self.ml_config["quality_gate"]["threshold"])
+            ),
+            "QualityGateDirection": self._sanitize_tag_value(
+                self.ml_config["quality_gate"]["direction"]
+            ),
         }
 
         # Add ml.yaml S3 URI if available
@@ -405,23 +412,61 @@ class PipelineBuilder:
     def _build_tags(self) -> list:
         """Build tags for resources."""
         tags = [
-            {"Key": "Project", "Value": self.project_name},
-            {"Key": "Team", "Value": self.ml_config["team"]},
-            {"Key": "Owner", "Value": self.ml_config.get("owner", "mlctl")},
+            {"Key": "Project", "Value": self._sanitize_tag_value(self.project_name)},
+            {"Key": "Team", "Value": self._sanitize_tag_value(self.ml_config["team"])},
+            {
+                "Key": "Owner",
+                "Value": self._sanitize_tag_value(self.ml_config.get("owner", "mlctl")),
+            },
             {"Key": "ManagedBy", "Value": "mlctl"},
         ]
 
         # Add deployment-scoped tags for pre-destroy cleanup
         for key, value in self.config.get_deployment_tags().items():
+            self._validate_tag_key(key)
             if not any(t["Key"] == key for t in tags):
-                tags.append({"Key": key, "Value": value})
+                tags.append({"Key": key, "Value": self._sanitize_tag_value(value)})
 
         # Add required tags (don't override deployment or project tags)
         for key, value in self.config.org_config.get("required_tags", {}).items():
+            self._validate_tag_key(key)
             if not any(t["Key"] == key for t in tags):
-                tags.append({"Key": key, "Value": value})
+                tags.append({"Key": key, "Value": self._sanitize_tag_value(value)})
 
         return tags
+
+    @staticmethod
+    def _sanitize_tag_value(value: str) -> str:
+        """Sanitize tag value to match AWS tag requirements.
+
+        AWS tags allow only: letters, numbers, spaces, and + - = . _ : / @
+        Keys max 128 chars, values max 256 chars.
+        """
+        if not value:
+            return value
+        # Replace disallowed characters (including tabs/newlines) with hyphen
+        # Use literal space instead of \s to exclude control chars
+        sanitized = re.sub(r"[^a-zA-Z0-9 +\-=._:/@]", "-", str(value))
+        # Truncate to 256 chars (tag value limit)
+        return sanitized[:256]
+
+    @staticmethod
+    def _validate_tag_key(key: str) -> None:
+        """Validate tag key meets AWS requirements.
+
+        Keys must:
+        - Be 1-128 characters
+        - Contain only letters, numbers, spaces, and + - = . _ : / @
+        - Not start with aws:
+        """
+        if not key:
+            raise ValueError("Tag key cannot be empty")
+        if len(key) > 128:
+            raise ValueError(f"Tag key exceeds 128 chars: {key}")
+        if key.startswith("aws:"):
+            raise ValueError(f"Tag key cannot start with 'aws:': {key}")
+        if not re.match(r"^[a-zA-Z0-9 +\-=._:/@]+$", key):
+            raise ValueError(f"Tag key contains invalid characters: {key}")
 
     def _get_artifact_bucket(self) -> str:
         """Get artifact bucket name."""
@@ -436,7 +481,7 @@ class PipelineBuilder:
 
     def _get_default_code_s3_prefix(self) -> str:
         """Get default S3 prefix for code (used in tests when content not yet packaged)."""
-        git_prefix = self.git_commit[:8] if self.git_commit != "unknown" else "nogit"
+        git_prefix = self.git_commit[:8] if self.git_commit != "none" else "nogit"
         return f"code/{self.project_name}/{git_prefix}"
 
     def get_code_s3_prefix_for_content(self, content_paths: list) -> str:
@@ -452,11 +497,11 @@ class PipelineBuilder:
                     hasher.update(f.read())
 
         content_hash = hasher.hexdigest()[:12]
-        git_prefix = self.git_commit[:8] if self.git_commit != "unknown" else "nogit"
+        git_prefix = self.git_commit[:8] if self.git_commit != "none" else "nogit"
         return f"code/{self.project_name}/{git_prefix}-{content_hash}"
 
     def _get_git_commit(self) -> str:
-        """Get current git commit hash."""
+        """Get current git commit hash, or 'none' if not in a git repository."""
         try:
             result = subprocess.run(
                 ["git", "rev-parse", "HEAD"],
@@ -467,7 +512,7 @@ class PipelineBuilder:
             )
             return result.stdout.strip()
         except Exception:
-            return "unknown"
+            return "none"
 
     def create_or_update_pipeline(self, sagemaker_client) -> str:
         """Create or update the pipeline in SageMaker."""
@@ -504,9 +549,22 @@ class PipelineBuilder:
 
     def start_pipeline_execution(self, sagemaker_client) -> str:
         """Start a pipeline execution."""
+        sanitized_project = self._sanitize_tag_value(self.project_name)
+
+        # Use content hash as identifier if not in git repo
+        if self.git_commit == "none":
+            # Use first 8 chars of code_s3_prefix hash as identifier
+            identifier = (
+                self.code_s3_prefix.split("-")[-1][:8]
+                if self.code_s3_prefix and "-" in self.code_s3_prefix
+                else "nogit"
+            )
+        else:
+            identifier = self._sanitize_tag_value(self.git_commit[:8])
+
         response = sagemaker_client.start_pipeline_execution(
             PipelineName=self.pipeline_name,
-            PipelineExecutionDisplayName=f"{self.project_name}-{self.git_commit[:8]}",
+            PipelineExecutionDisplayName=f"{sanitized_project}-{identifier}",
         )
 
         return response["PipelineExecutionArn"]

@@ -4,7 +4,7 @@ resource "aws_s3_bucket" "artifact_bucket" {
 
   tags = {
     Name = "${var.project_name}-artifacts"
-    Note = "force_destroy is enabled for demo purposes; disable for production"
+    Note = "force_destroy is enabled for demo purposes - disable for production"
   }
 }
 

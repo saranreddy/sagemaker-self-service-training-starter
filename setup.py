@@ -6,7 +6,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="mlctl-sagemaker",
-    version="0.1.0",
+    version="0.1.1",
     author="SageMaker Self-Service Training Starter Contributors",
     description="CLI for self-service SageMaker training pipelines",
     long_description=long_description,
@@ -24,12 +24,13 @@ setup(
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
         "Programming Language :: Python :: 3.12",
+        "Programming Language :: Python :: 3.13",
     ],
     python_requires=">=3.9",
     install_requires=[
         "boto3==1.34.84",
         "botocore==1.34.84",
-        "pyyaml==6.0.1",
+        "pyyaml==6.0.2",
         "jsonschema==4.21.1",
         "click==8.1.7",
         "rich==13.7.1",
