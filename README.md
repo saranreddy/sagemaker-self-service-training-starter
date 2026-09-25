@@ -57,13 +57,15 @@ One `ml.yaml` file declares the project. No pipeline code to maintain.
    git clone https://github.com/<your-org>/sagemaker-self-service-training-starter.git
    cd sagemaker-self-service-training-starter
    make doctor          # Check prerequisites
+   make init            # Initialize Terraform
+   make apply           # Apply infrastructure (creates terraform.tfvars on first run)
+   # Edit terraform/terraform.tfvars if needed, then run 'make apply' again
+   # To skip confirmation prompts: make apply AUTO_APPROVE=1
    cd terraform
-   cp terraform.tfvars.example terraform.tfvars
-   # Edit terraform.tfvars if needed
-   terraform init
-   terraform apply
    terraform output org_config_yaml > ../org-config.yaml
    ```
+
+   **Note**: On first `make apply`, terraform.tfvars is auto-created from the example. The command exits after creation so you can review and edit it. Run `make apply` again to proceed with deployment.
 
 2. **Distribute `org-config.yaml`** to data scientists (via git, S3, or copy to `~/.mlctl/org-config.yaml`)
 
@@ -97,7 +99,9 @@ One `ml.yaml` file declares the project. No pipeline code to maintain.
 
 ### For the Data Scientist
 
-**Prerequisites**: Python 3.9+, AWS CLI v2 configured with credentials, `org-config.yaml` from MLOps
+**Prerequisites**: Python 3.9-3.13, AWS CLI v2 configured with credentials, `org-config.yaml` from MLOps
+
+**Note**: PyTorch examples require Python ≤3.12 on Intel Mac (no official torch wheels for Intel Mac + Python 3.13). ARM Mac and Linux support Python 3.13.
 
 1. **Install `mlctl`:**
 
@@ -306,6 +310,8 @@ After `terraform apply`, use `terraform output -json` to get:
 
 ```bash
 make destroy
+# To skip confirmation prompts: make destroy AUTO_APPROVE=1
+# To force destroy even if pre-destroy cleanup fails: make destroy FORCE=1
 ```
 
 This runs `scripts/pre-destroy.sh` to clean up:
@@ -318,6 +324,7 @@ This runs `scripts/pre-destroy.sh` to clean up:
 Then runs `terraform destroy`.
 
 **Important Notes**:
+- By default, `make destroy` stops if `pre-destroy.sh` fails (e.g., credential issues or API errors). Set `FORCE=1` to continue anyway.
 - `pre-destroy.sh` only deletes resources tagged with the deployment-scoped tag from `org-config.yaml` (`deployment_tag` key)
 - SageMaker training and processing **job records** cannot be deleted via API. They remain visible in the console history but do not incur charges.
 - The smoke test tracks its own resources by name and cleans them up on both success and failure.

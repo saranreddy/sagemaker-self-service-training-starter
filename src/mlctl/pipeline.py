@@ -423,11 +423,13 @@ class PipelineBuilder:
 
         # Add deployment-scoped tags for pre-destroy cleanup
         for key, value in self.config.get_deployment_tags().items():
+            self._validate_tag_key(key)
             if not any(t["Key"] == key for t in tags):
                 tags.append({"Key": key, "Value": self._sanitize_tag_value(value)})
 
         # Add required tags (don't override deployment or project tags)
         for key, value in self.config.org_config.get("required_tags", {}).items():
+            self._validate_tag_key(key)
             if not any(t["Key"] == key for t in tags):
                 tags.append({"Key": key, "Value": self._sanitize_tag_value(value)})
 
@@ -442,10 +444,29 @@ class PipelineBuilder:
         """
         if not value:
             return value
-        # Replace disallowed characters with hyphen
-        sanitized = re.sub(r"[^a-zA-Z0-9\s+\-=._:/@]", "-", str(value))
+        # Replace disallowed characters (including tabs/newlines) with hyphen
+        # Use literal space instead of \s to exclude control chars
+        sanitized = re.sub(r"[^a-zA-Z0-9 +\-=._:/@]", "-", str(value))
         # Truncate to 256 chars (tag value limit)
         return sanitized[:256]
+
+    @staticmethod
+    def _validate_tag_key(key: str) -> None:
+        """Validate tag key meets AWS requirements.
+
+        Keys must:
+        - Be 1-128 characters
+        - Contain only letters, numbers, spaces, and + - = . _ : / @
+        - Not start with aws:
+        """
+        if not key:
+            raise ValueError("Tag key cannot be empty")
+        if len(key) > 128:
+            raise ValueError(f"Tag key exceeds 128 chars: {key}")
+        if key.startswith("aws:"):
+            raise ValueError(f"Tag key cannot start with 'aws:': {key}")
+        if not re.match(r"^[a-zA-Z0-9 +\-=._:/@]+$", key):
+            raise ValueError(f"Tag key contains invalid characters: {key}")
 
     def _get_artifact_bucket(self) -> str:
         """Get artifact bucket name."""

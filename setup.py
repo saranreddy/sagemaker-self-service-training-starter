@@ -30,7 +30,7 @@ setup(
     install_requires=[
         "boto3==1.34.84",
         "botocore==1.34.84",
-        "pyyaml==6.0.1",
+        "pyyaml==6.0.2",
         "jsonschema==4.21.1",
         "click==8.1.7",
         "rich==13.7.1",

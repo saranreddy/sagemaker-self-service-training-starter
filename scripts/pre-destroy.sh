@@ -60,7 +60,8 @@ report() {
 # Function to check if resource has deployment tag
 has_deployment_tag() {
     local resource_arn="$1"
-    local tags=$(aws sagemaker list-tags \
+    local tags
+    tags=$(aws sagemaker list-tags \
         --resource-arn "$resource_arn" \
         --query "Tags[?Key=='$TAG_KEY' && Value=='$TAG_VALUE']" \
         --output text 2>/dev/null || echo "")

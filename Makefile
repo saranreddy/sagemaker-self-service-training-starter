@@ -5,9 +5,13 @@ help:
 	@echo "  doctor    - Check prerequisites and environment"
 	@echo "  venv      - Create Python virtual environment with dependencies"
 	@echo "  init      - Initialize Terraform"
-	@echo "  apply     - Apply Terraform infrastructure (set AUTO_APPROVE=1 to skip confirmation)"
+	@echo "  apply     - Apply Terraform infrastructure"
+	@echo "              Set AUTO_APPROVE=1 to skip confirmation"
+	@echo "              Creates terraform.tfvars from example if missing (exits with guidance)"
 	@echo "  smoke     - Run smoke tests (requires deployed infrastructure)"
-	@echo "  destroy   - Destroy Terraform infrastructure (set AUTO_APPROVE=1 to skip confirmation)"
+	@echo "  destroy   - Destroy Terraform infrastructure"
+	@echo "              Set AUTO_APPROVE=1 to skip confirmation"
+	@echo "              Set FORCE=1 to continue even if pre-destroy cleanup fails"
 	@echo "  clean     - Clean build artifacts (preserves tfstate)"
 	@echo "  test      - Run Python unit tests"
 	@echo "  lint      - Run linters"
@@ -46,10 +50,25 @@ smoke: doctor
 destroy:
 	@echo "Running pre-destroy cleanup..."
 	@if ! scripts/pre-destroy.sh; then \
-		echo ""; \
-		echo "WARNING: pre-destroy.sh failed. This is usually safe to ignore if resources are already deleted."; \
-		echo "Continuing with terraform destroy..."; \
-		echo ""; \
+		if [ "$(FORCE)" != "1" ]; then \
+			echo ""; \
+			echo "ERROR: pre-destroy.sh failed."; \
+			echo ""; \
+			echo "This usually indicates a real problem (missing credentials, API errors, or resources that couldn't be deleted)."; \
+			echo "Please:"; \
+			echo "  1. Check your AWS credentials"; \
+			echo "  2. Review the error messages above"; \
+			echo "  3. Manually clean up any stuck resources if needed"; \
+			echo "  4. Re-run 'make destroy' or 'scripts/pre-destroy.sh' to retry"; \
+			echo ""; \
+			echo "To force terraform destroy anyway (not recommended): make destroy FORCE=1"; \
+			echo ""; \
+			exit 1; \
+		else \
+			echo ""; \
+			echo "WARNING: pre-destroy.sh failed but FORCE=1 is set. Continuing anyway..."; \
+			echo ""; \
+		fi \
 	fi
 	@if [ "$(AUTO_APPROVE)" = "1" ]; then \
 		cd terraform && terraform destroy -auto-approve; \

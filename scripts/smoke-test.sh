@@ -163,7 +163,8 @@ source venv/bin/activate || fail "Failed to activate venv"
 
 # Install mlctl and example dependencies
 pip install -q -e . || fail "Failed to install mlctl"
-pip install -q "scikit-learn>=1.2.2,<1.6" "numpy>=1.24.3,<2.2" "xgboost>=1.7.6,<2.2" || fail "Failed to install example deps"
+pip install -q -r examples/sklearn-iris/requirements.txt || fail "Failed to install sklearn deps"
+pip install -q -r examples/xgboost-boston/requirements.txt || fail "Failed to install xgboost deps"
 
 # Get AWS details
 cd terraform

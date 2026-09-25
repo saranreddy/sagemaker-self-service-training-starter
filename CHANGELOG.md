@@ -9,11 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **S3 tag validation error**: Fixed `terraform/s3.tf` tag value containing semicolon (not allowed in AWS S3/SageMaker tags). Changed "force_destroy is enabled for demo purposes; disable for production" to use hyphen instead.
-- **Tag sanitization**: Added `_sanitize_tag_value()` method in `pipeline.py` to remove disallowed characters from all user-derived tag values (project name, team, owner, git commit, deployment tags, required tags, and CustomerMetadataProperties). AWS tags only allow letters, numbers, spaces, and `+ - = . _ : / @`. Values are truncated to 256 chars.
-- **Python 3.12+ compatibility**: Loosened dependency pins in `scripts/smoke-test.sh`, example `requirements.txt` files, and templates to support Python 3.9-3.13. Changed from strict pins (e.g., `scikit-learn==1.2.2`) to compatible ranges (e.g., `scikit-learn>=1.2.2,<1.6`). Added Python 3.13 to CI matrix.
-- **Train channel naming**: Fixed inconsistency between pipeline channel name (`training`) and train.py argument names (`--train`). Changed all examples and templates to use `--training` and `args.training` to match `SM_CHANNEL_TRAINING` environment variable. Updated README documentation.
+- **Tag sanitization**: Added `_sanitize_tag_value()` method in `pipeline.py` to remove disallowed characters from all user-derived tag values (project name, team, owner, git commit, deployment tags, required tags, and CustomerMetadataProperties). AWS tags only allow letters, numbers, spaces (not tabs/newlines), and `+ - = . _ : / @`. Values are truncated to 256 chars. Added `_validate_tag_key()` to validate tag keys (max 128 chars, no `aws:` prefix, no invalid characters).
+- **Container dependency compatibility**: Fixed critical issue where loosened dependency pins upgraded packages inside SageMaker containers, breaking model inference. Example and template `requirements.txt` files now use environment markers to keep container Pythons (3.8-3.10) at container framework versions and only upgrade for local Python 3.11+:
+  - sklearn: `==1.2.1` for containers, `>=1.3,<1.6` for local
+  - numpy: `>=1.24.1,<1.25` for containers, `>=1.26,<2.2` for local
+  - xgboost: `==1.7.4` for containers, `>=1.7.6,<2.2` for local
+  - torch: `==2.1.0` for containers, `>=2.1.0,<2.7` for local (note: no Intel Mac wheels for torch on Python 3.13)
+- **Train channel naming**: Renamed train.py argument from `--train` to `--training` for consistency with pipeline channel name and `SM_CHANNEL_TRAINING` environment variable. Updated all examples, templates, and README documentation.
 - **Non-git checkout handling**: Changed git commit value from `"unknown"` to `"none"` when not in a git repository. Pipeline execution display names now use content hash as identifier for non-git checkouts. Documented behavior in README under "Git Commit Tracking".
-- **Makefile improvements**: `make apply` and `make destroy` now honor `AUTO_APPROVE=1` to skip confirmation prompts. `make apply` creates `terraform.tfvars` from example if missing. `make destroy` continues even if pre-destroy cleanup fails (with clear warning message).
+- **Makefile improvements**: 
+  - `make apply` and `make destroy` now honor `AUTO_APPROVE=1` to skip confirmation prompts
+  - `make apply` creates `terraform.tfvars` from example if missing (exits with guidance on first run)
+  - `make destroy` now stops by default if pre-destroy cleanup fails (set `FORCE=1` to continue anyway)
+  - Updated help text to document `AUTO_APPROVE` and `FORCE` variables
 
 ### Added
 - **Tag validation unit tests**: New `tests/test_tag_validation.py` with comprehensive tests for AWS tag compliance:
@@ -21,10 +29,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Terraform tag literals validation (parses `.tf` files)
   - `_build_tags()` output validation
   - CustomerMetadataProperties sanitization in RegisterModel step
-- **Python 3.13 support**: Added to classifiers in `setup.py` and CI test matrix. Local-run CI jobs now test on both Python 3.9 and 3.13.
+- **Container pin validation tests**: New `tests/test_container_pins.py` validates that example and template requirements.txt container-side pins match SageMaker container framework versions
+- **Python 3.13 support**: Added to classifiers in `setup.py` and CI test matrix. Local-run CI jobs now test on both Python 3.9 and 3.13. Added PyTorch dry-run test job.
+- **Terraform validation**: Added validation block to `var.project_name` requiring lowercase alphanumeric and hyphens (3-42 chars)
 
 ### Changed
-- CI local-run jobs now install exact dependencies from `smoke-test.sh` (compatible ranges) instead of using `requirements.txt` directly.
+- CI local-run jobs now install from actual `requirements.txt` files instead of hard-coded versions
+- `scripts/smoke-test.sh` now installs from example `requirements.txt` files
+- Updated `pyyaml` from 6.0.1 to 6.0.2 (adds Python 3.13 wheel support)
+- Updated README to document `AUTO_APPROVE` and `FORCE` make variables, and the tfvars auto-copy behavior
 
 ## [0.1.0] - 2026-09-24
 

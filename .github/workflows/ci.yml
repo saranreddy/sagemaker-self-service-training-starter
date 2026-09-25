@@ -125,7 +125,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e .
-          pip install "scikit-learn>=1.2.2,<1.6" "numpy>=1.24.3,<2.2"
+      
+      - name: Install example dependencies
+        working-directory: examples/sklearn-iris
+        run: pip install -r requirements.txt
       
       - name: Generate data
         working-directory: examples/sklearn-iris
@@ -154,7 +157,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e .
-          pip install "xgboost>=1.7.6,<2.2" "numpy>=1.24.3,<2.2" "scikit-learn>=1.2.2,<1.6"
+      
+      - name: Install example dependencies
+        working-directory: examples/xgboost-boston
+        run: pip install -r requirements.txt
       
       - name: Generate data
         working-directory: examples/xgboost-boston
@@ -163,3 +169,24 @@ jobs:
       - name: Run locally
         working-directory: examples/xgboost-boston
         run: mlctl run
+
+  pytorch-dry-run:
+    name: PyTorch Dry Run
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.13']
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      
+      - name: Test PyTorch requirements install
+        working-directory: examples/pytorch-mnist
+        run: |
+          python -m pip install --upgrade pip
+          pip install --dry-run --only-binary=:all: -r requirements.txt

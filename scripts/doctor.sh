@@ -10,9 +10,10 @@ check_command() {
     local cmd=$1
     local name=$2
     local version_flag=${3:---version}
+    local version
     
     if command -v "$cmd" &> /dev/null; then
-        local version=$($cmd $version_flag 2>&1 | head -n 1)
+        version=$($cmd $version_flag 2>&1 | head -n 1)
         echo "✓ $name: $version"
     else
         echo "✗ $name: NOT FOUND"
