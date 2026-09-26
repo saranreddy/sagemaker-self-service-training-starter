@@ -96,11 +96,15 @@ class TestContainerPins:
 
     def test_sklearn_example_pins(self):
         """Test sklearn example container pins match image versions."""
-        req_file = Path(__file__).parent.parent / "examples/sklearn-iris/requirements.txt"
+        req_file = (
+            Path(__file__).parent.parent / "examples/sklearn-iris/requirements.txt"
+        )
         pins = self._parse_requirements(req_file, "sklearn")
 
         for package, expected_version in self.CONTAINER_VERSIONS["sklearn"].items():
-            assert package in pins, f"{package} container pin not found in {req_file.name}"
+            assert (
+                package in pins
+            ), f"{package} container pin not found in {req_file.name}"
 
             specifier, matched_pythons = pins[package]
 
@@ -126,11 +130,15 @@ class TestContainerPins:
 
     def test_xgboost_example_pins(self):
         """Test xgboost example container pins match image versions."""
-        req_file = Path(__file__).parent.parent / "examples/xgboost-boston/requirements.txt"
+        req_file = (
+            Path(__file__).parent.parent / "examples/xgboost-boston/requirements.txt"
+        )
         pins = self._parse_requirements(req_file, "xgboost")
 
         for package, expected_version in self.CONTAINER_VERSIONS["xgboost"].items():
-            assert package in pins, f"{package} container pin not found in {req_file.name}"
+            assert (
+                package in pins
+            ), f"{package} container pin not found in {req_file.name}"
 
             specifier, matched_pythons = pins[package]
 
@@ -148,11 +156,15 @@ class TestContainerPins:
 
     def test_pytorch_example_pins(self):
         """Test pytorch example container pins match image versions."""
-        req_file = Path(__file__).parent.parent / "examples/pytorch-mnist/requirements.txt"
+        req_file = (
+            Path(__file__).parent.parent / "examples/pytorch-mnist/requirements.txt"
+        )
         pins = self._parse_requirements(req_file, "pytorch")
 
         for package, expected_version in self.CONTAINER_VERSIONS["pytorch"].items():
-            assert package in pins, f"{package} container pin not found in {req_file.name}"
+            assert (
+                package in pins
+            ), f"{package} container pin not found in {req_file.name}"
 
             specifier, matched_pythons = pins[package]
 
@@ -170,11 +182,16 @@ class TestContainerPins:
 
     def test_sklearn_template_pins(self):
         """Test sklearn template container pins match image versions."""
-        req_file = Path(__file__).parent.parent / "src/mlctl/templates/sklearn/requirements.txt"
+        req_file = (
+            Path(__file__).parent.parent
+            / "src/mlctl/templates/sklearn/requirements.txt"
+        )
         pins = self._parse_requirements(req_file, "sklearn")
 
         for package, expected_version in self.CONTAINER_VERSIONS["sklearn"].items():
-            assert package in pins, f"{package} container pin not found in {req_file.name}"
+            assert (
+                package in pins
+            ), f"{package} container pin not found in {req_file.name}"
 
             specifier, matched_pythons = pins[package]
             assert matched_pythons == ["3.8", "3.9", "3.10"]
@@ -182,11 +199,16 @@ class TestContainerPins:
 
     def test_xgboost_template_pins(self):
         """Test xgboost template container pins match image versions."""
-        req_file = Path(__file__).parent.parent / "src/mlctl/templates/xgboost/requirements.txt"
+        req_file = (
+            Path(__file__).parent.parent
+            / "src/mlctl/templates/xgboost/requirements.txt"
+        )
         pins = self._parse_requirements(req_file, "xgboost")
 
         for package, expected_version in self.CONTAINER_VERSIONS["xgboost"].items():
-            assert package in pins, f"{package} container pin not found in {req_file.name}"
+            assert (
+                package in pins
+            ), f"{package} container pin not found in {req_file.name}"
 
             specifier, matched_pythons = pins[package]
             assert matched_pythons == ["3.8", "3.9", "3.10"]
@@ -194,11 +216,16 @@ class TestContainerPins:
 
     def test_pytorch_template_pins(self):
         """Test pytorch template container pins match image versions."""
-        req_file = Path(__file__).parent.parent / "src/mlctl/templates/pytorch/requirements.txt"
+        req_file = (
+            Path(__file__).parent.parent
+            / "src/mlctl/templates/pytorch/requirements.txt"
+        )
         pins = self._parse_requirements(req_file, "pytorch")
 
         for package, expected_version in self.CONTAINER_VERSIONS["pytorch"].items():
-            assert package in pins, f"{package} container pin not found in {req_file.name}"
+            assert (
+                package in pins
+            ), f"{package} container pin not found in {req_file.name}"
 
             specifier, matched_pythons = pins[package]
             assert matched_pythons == ["3.8", "3.9", "3.10"]
@@ -221,12 +248,14 @@ class TestContainerPins:
 
             # Should have at least one line with python_version >= "3.11"
             has_local = (
-                'python_version >= "3.11"' in content or "python_version >= '3.11'" in content
+                'python_version >= "3.11"' in content
+                or "python_version >= '3.11'" in content
             )
             assert has_local, f"{file_path} missing local (3.11+) pins"
 
             # Should have at least one line with python_version < "3.11"
             has_container = (
-                'python_version < "3.11"' in content or "python_version < '3.11'" in content
+                'python_version < "3.11"' in content
+                or "python_version < '3.11'" in content
             )
             assert has_container, f"{file_path} missing container (<3.11) pins"
