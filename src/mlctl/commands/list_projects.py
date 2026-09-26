@@ -41,7 +41,18 @@ def list_projects():
 
             project_name = pipeline_name.replace("-pipeline", "")
 
+            # Get team from pipeline tags
             team = "unknown"
+            try:
+                pipeline_arn = pipeline["PipelineArn"]
+                tags_response = sagemaker_client.list_tags(ResourceArn=pipeline_arn)
+                for tag in tags_response.get("Tags", []):
+                    if tag["Key"] == "Team":
+                        team = tag["Value"]
+                        break
+            except Exception:
+                pass
+
             last_status = "N/A"
 
             try:

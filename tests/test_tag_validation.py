@@ -8,6 +8,91 @@ import pytest
 from mlctl.pipeline import PipelineBuilder
 
 
+class TestTagKeyValidation:
+    """Test tag key validation."""
+
+    @pytest.fixture
+    def pipeline_builder(self):
+        """Create a minimal pipeline builder for testing."""
+        config = type('Config', (), {
+            'get_artifact_bucket': lambda self, team: 'test-bucket',
+            'get_deployment_tag': lambda self: {'mlctl:deployment': 'test'},
+            'get_required_tags': lambda self: {},
+        })()
+        
+        ml_config = {
+            'name': 'test-project',
+            'team': 'test-team',
+            'owner': 'test-owner',
+            'framework': 'sklearn',
+        }
+        
+        return PipelineBuilder(
+            config=config,
+            ml_config=ml_config,
+            region='us-east-1',
+        )
+
+    def test_valid_tag_keys(self, pipeline_builder):
+        """Test that valid tag keys pass validation."""
+        valid_keys = [
+            "Project",
+            "Team",
+            "Owner",
+            "mlctl:deployment",
+            "Cost-Center",
+            "Environment_Name",
+            "Project/Team",
+            "Email@Domain",
+            "A+B=C.D:E/F@G",
+            "a" * 128,
+        ]
+        for key in valid_keys:
+            pipeline_builder._validate_tag_key(key)
+
+    def test_empty_key_raises(self, pipeline_builder):
+        """Test that empty key raises ValueError."""
+        with pytest.raises(ValueError, match="Tag key cannot be empty"):
+            pipeline_builder._validate_tag_key("")
+
+    def test_too_long_key_raises(self, pipeline_builder):
+        """Test that key over 128 chars raises ValueError."""
+        long_key = "a" * 129
+        with pytest.raises(ValueError, match="Tag key exceeds 128 chars"):
+            pipeline_builder._validate_tag_key(long_key)
+
+    def test_aws_prefix_case_insensitive_raises(self, pipeline_builder):
+        """Test that keys starting with aws: in any case raise ValueError."""
+        invalid_keys = [
+            "aws:something",
+            "AWS:Something",
+            "Aws:Something",
+            "AwS:test",
+        ]
+        for key in invalid_keys:
+            with pytest.raises(ValueError, match="cannot start with 'aws:'"):
+                pipeline_builder._validate_tag_key(key)
+
+    def test_invalid_characters_raise(self, pipeline_builder):
+        """Test that keys with invalid characters raise ValueError."""
+        invalid_keys = [
+            "Project\n",
+            "Team\t",
+            "Owner\r",
+            "Key;Value",
+            "Key<Value",
+            "Key>Value",
+            "Key{Value}",
+            "Key[Value]",
+            "Key*Value",
+            "Key?Value",
+            "Key&Value",
+        ]
+        for key in invalid_keys:
+            with pytest.raises(ValueError, match="contains invalid characters"):
+                pipeline_builder._validate_tag_key(key)
+
+
 class TestAWSTagValidation:
     """Test that all tags comply with AWS tag requirements."""
 
@@ -44,6 +129,11 @@ class TestAWSTagValidation:
 
         # Test empty string
         assert PipelineBuilder._sanitize_tag_value("") == ""
+
+        # Test tab and newline are replaced with hyphen
+        assert PipelineBuilder._sanitize_tag_value("test\tvalue") == "test-value"
+        assert PipelineBuilder._sanitize_tag_value("test\nvalue") == "test-value"
+        assert PipelineBuilder._sanitize_tag_value("test\r\nvalue") == "test--value"
 
     def test_terraform_tag_literals(self):
         """Test that all terraform tag literals match AWS requirements."""

@@ -6,7 +6,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="mlctl-sagemaker",
-    version="0.1.1",
+    version="0.1.2",
     author="SageMaker Self-Service Training Starter Contributors",
     description="CLI for self-service SageMaker training pipelines",
     long_description=long_description,

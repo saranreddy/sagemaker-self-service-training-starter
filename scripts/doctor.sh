@@ -66,8 +66,63 @@ else
 fi
 
 echo ""
+
+# Check SageMaker service quotas (warning only, doesn't fail)
+echo "=== SageMaker Service Quotas ==="
+
+QUOTA_WARNINGS=0
+
+# Get region
+REGION=$(aws configure get region 2>/dev/null || echo "us-east-1")
+
+# Check if service-quotas is available
+if aws service-quotas get-service-quota --service-code sagemaker --quota-code L-611FA074 --region "$REGION" >/dev/null 2>&1; then
+    # Quota codes for common instance types
+    # ml.m5.large training: L-611FA074
+    # ml.m5.large processing: L-47E7EA09
+    # Format: "instance_type:quota_code:job_type"
+    declare -a QUOTAS_TO_CHECK=(
+        "ml.m5.large:L-611FA074:training"
+        "ml.m5.large:L-47E7EA09:processing"
+    )
+    
+    for quota_spec in "${QUOTAS_TO_CHECK[@]}"; do
+        IFS=':' read -r instance_type quota_code job_type <<< "$quota_spec"
+        
+        quota_value=$(aws service-quotas get-service-quota \
+            --service-code sagemaker \
+            --quota-code "$quota_code" \
+            --region "$REGION" \
+            --query 'Quota.Value' \
+            --output text 2>/dev/null || echo "")
+        
+        if [ -n "$quota_value" ]; then
+            # Compare as integers (bash 3.2 compatible)
+            quota_int=$(printf "%.0f" "$quota_value" 2>/dev/null || echo "1")
+            if [ "$quota_int" -eq 0 ]; then
+                echo "⚠️  Warning: SageMaker quota for '$instance_type for $job_type job usage' is 0 in region $REGION"
+                echo "   Pipelines using this instance type will fail until you request a quota increase."
+                echo "   Request via: https://console.aws.amazon.com/servicequotas/home/services/sagemaker/quotas"
+                QUOTA_WARNINGS=$((QUOTA_WARNINGS + 1))
+            fi
+        fi
+    done
+    
+    if [ $QUOTA_WARNINGS -eq 0 ]; then
+        echo "✓ Default instance type quotas are non-zero"
+    fi
+else
+    echo "⚠️  Note: Unable to check service quotas (access may be restricted or AWS CLI too old)"
+fi
+
+echo ""
+
 if [ $ERRORS -eq 0 ]; then
-    echo "✓ All checks passed"
+    if [ $QUOTA_WARNINGS -gt 0 ]; then
+        echo "✓ All checks passed (with $QUOTA_WARNINGS quota warning(s))"
+    else
+        echo "✓ All checks passed"
+    fi
     exit 0
 else
     echo "✗ $ERRORS check(s) failed"

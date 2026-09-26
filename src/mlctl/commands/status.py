@@ -93,6 +93,10 @@ def status(execution_arn: str, project: str):
                 started = step.get("StartTime", "N/A")
 
                 table.add_row(step_name, step_type, status, str(started))
+                
+                # Show FailureReason for failed steps
+                if status == "Failed" and step.get("FailureReason"):
+                    console.print(f"  [red]↳ Failure: {step['FailureReason']}[/red]")
 
             console.print(table)
 

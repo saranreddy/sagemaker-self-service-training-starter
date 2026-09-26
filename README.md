@@ -49,7 +49,7 @@ One `ml.yaml` file declares the project. No pipeline code to maintain.
 
 ### For the MLOps Engineer (One-Time Setup)
 
-**Prerequisites**: Terraform 1.5+, AWS CLI v2, AWS credentials, Python 3.9+, `jq`, `make`, `bash` 3.2+
+**Prerequisites**: Terraform 1.5+, AWS CLI v1 or v2, AWS credentials, Python 3.9+, `jq`, `make`, `bash` 3.2+
 
 1. **Use this template on GitHub, then clone and deploy the infrastructure:**
 
@@ -62,7 +62,7 @@ One `ml.yaml` file declares the project. No pipeline code to maintain.
    # Edit terraform/terraform.tfvars if needed, then run 'make apply' again
    # To skip confirmation prompts: make apply AUTO_APPROVE=1
    cd terraform
-   terraform output org_config_yaml > ../org-config.yaml
+   terraform output -raw org_config_yaml > ../org-config.yaml
    ```
 
    **Note**: On first `make apply`, terraform.tfvars is auto-created from the example. The command exits after creation so you can review and edit it. Run `make apply` again to proceed with deployment.
@@ -99,9 +99,11 @@ One `ml.yaml` file declares the project. No pipeline code to maintain.
 
 ### For the Data Scientist
 
-**Prerequisites**: Python 3.9-3.13, AWS CLI v2 configured with credentials, `org-config.yaml` from MLOps
+**Prerequisites**: Python 3.9-3.13, AWS CLI v1 or v2 configured with credentials, `org-config.yaml` from MLOps
 
-**Note**: PyTorch examples require Python ≤3.12 on Intel Mac (no official torch wheels for Intel Mac + Python 3.13). ARM Mac and Linux support Python 3.13.
+**Notes**:
+- PyTorch examples require Python ≤3.12 on Intel Mac (no official torch wheels for Intel Mac + Python 3.13). ARM Mac and Linux support Python 3.13.
+- macOS users running xgboost locally need `brew install libomp`
 
 1. **Install `mlctl`:**
 
@@ -124,7 +126,7 @@ One `ml.yaml` file declares the project. No pipeline code to maintain.
 
    - Edit `ml.yaml`: set S3 data paths, hyperparameters, quality gate
    - Update `train.py` and `evaluate.py` (keep the SageMaker environment variables contract)
-   - Add dependencies to `requirements.txt`
+   - Add dependencies to `requirements.txt` (note: lines with `python_version < "3.11"` run in SageMaker containers and must match container versions; lines with `python_version >= "3.11"` are for local development only)
 
 4. **Validate locally:**
 
@@ -402,9 +404,10 @@ make lint    # flake8 and black (requires passing to merge)
 GitHub Actions runs on every push and PR:
 
 - Terraform fmt/validate/tflint
-- Python unit tests (3.9, 3.10, 3.11, 3.12)
+- Python unit tests (3.9, 3.10, 3.11, 3.12, 3.13)
 - Validate all example projects offline
-- Run sklearn and xgboost examples locally (pytorch skipped due to large torch install)
+- Run sklearn and xgboost examples locally on 3.9 and 3.13
+- PyTorch dry-run dependency resolution test on 3.9 and 3.13
 
 ## Design Decisions
 
