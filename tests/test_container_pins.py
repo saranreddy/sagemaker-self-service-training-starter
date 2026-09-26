@@ -1,15 +1,14 @@
 """Unit tests for container dependency pin validation.
 
 Container version sources:
-- sklearn 1.2-1: https://github.com/aws/sagemaker-scikit-learn-container/tree/v1.2-1
-- xgboost 1.7-1: https://github.com/aws/sagemaker-xgboost-container/tree/v1.7-1
-- pytorch DLC v1.21: https://github.com/aws/deep-learning-containers (release v1.21-pt-sagemaker-2.1.0-tr-py310)
+- sklearn 1.2-1: github.com/aws/sagemaker-scikit-learn-container v1.2-1
+- xgboost 1.7-1: github.com/aws/sagemaker-xgboost-container v1.7-1
+- pytorch DLC v1.21: github.com/aws/deep-learning-containers v1.21
 """
 
 from pathlib import Path
 from packaging.requirements import Requirement
 from packaging.markers import default_environment
-from packaging.specifiers import SpecifierSet
 
 
 class TestContainerPins:
@@ -29,7 +28,7 @@ class TestContainerPins:
             "torch": "2.1.0",
         },
     }
-    
+
     # Framework package names to check
     FRAMEWORK_PACKAGES = {
         "sklearn": ["scikit-learn"],
@@ -39,28 +38,28 @@ class TestContainerPins:
 
     def _parse_requirements(self, req_file: Path, framework: str) -> dict:
         """Parse requirements.txt and extract container pins for container Pythons.
-        
+
         Returns dict mapping package name to matched version for each container Python version.
         """
         content = req_file.read_text()
-        
+
         # Container images use Python 3.8, 3.9, or 3.10
         container_pythons = ["3.8", "3.9", "3.10"]
         framework_packages = self.FRAMEWORK_PACKAGES[framework]
-        
+
         # Track which packages have container pins and which don't
         container_pins = {}
         unmarked_framework_lines = []
-        
+
         for line in content.strip().split("\n"):
             line = line.strip()
             if not line or line.startswith("#"):
                 continue
-            
+
             try:
                 req = Requirement(line)
                 package_name = req.name.lower()
-                
+
                 # Check if this is a framework package
                 if package_name in framework_packages:
                     # Check if it has a marker for Python < 3.11
@@ -69,27 +68,30 @@ class TestContainerPins:
                         versions_matched = []
                         for py_version in container_pythons:
                             env = default_environment()
-                            env['python_version'] = py_version
+                            env["python_version"] = py_version
                             if req.marker.evaluate(env):
                                 versions_matched.append(py_version)
-                        
+
                         if versions_matched:
                             # Extract the version that the specifier pins to
                             # We expect exact pins (==) for containers
-                            container_pins[package_name] = (req.specifier, versions_matched)
+                            container_pins[package_name] = (
+                                req.specifier,
+                                versions_matched,
+                            )
                     else:
                         # Framework package without marker
                         unmarked_framework_lines.append(line)
             except Exception:
                 # Skip unparseable lines
                 pass
-        
+
         # Fail if framework packages have no container marker
         assert not unmarked_framework_lines, (
             f"Framework packages must have python_version < '3.11' marker. "
             f"Found unmarked lines: {unmarked_framework_lines}"
         )
-        
+
         return container_pins
 
     def test_sklearn_example_pins(self):
@@ -103,26 +105,28 @@ class TestContainerPins:
             assert (
                 package in pins
             ), f"{package} container pin not found in {req_file.name}"
-            
+
             specifier, matched_pythons = pins[package]
-            
+
             # Check that the pin applies to container Python versions
-            assert matched_pythons == ["3.8", "3.9", "3.10"], (
-                f"{package} marker does not match container Pythons (3.8-3.10)"
-            )
-            
+            assert matched_pythons == [
+                "3.8",
+                "3.9",
+                "3.10",
+            ], f"{package} marker does not match container Pythons (3.8-3.10)"
+
             # Check that exactly the container version is pinned
-            assert expected_version in specifier, (
-                f"{package} specifier {specifier} does not include container version {expected_version}"
-            )
-            
+            assert (
+                expected_version in specifier
+            ), f"{package} specifier {specifier} does not include container version {expected_version}"
+
             # For exact pins, verify no other version satisfies
             if str(specifier).startswith("=="):
                 test_versions = ["1.2.0", "1.2.1", "1.2.2", "1.3.0"]
                 matching = [v for v in test_versions if v in specifier]
-                assert matching == [expected_version], (
-                    f"{package} pin {specifier} matches multiple versions: {matching}"
-                )
+                assert matching == [
+                    expected_version
+                ], f"{package} pin {specifier} matches multiple versions: {matching}"
 
     def test_xgboost_example_pins(self):
         """Test xgboost example container pins match image versions."""
@@ -135,18 +139,20 @@ class TestContainerPins:
             assert (
                 package in pins
             ), f"{package} container pin not found in {req_file.name}"
-            
+
             specifier, matched_pythons = pins[package]
-            
+
             # Check that the pin applies to container Python versions
-            assert matched_pythons == ["3.8", "3.9", "3.10"], (
-                f"{package} marker does not match container Pythons (3.8-3.10)"
-            )
-            
+            assert matched_pythons == [
+                "3.8",
+                "3.9",
+                "3.10",
+            ], f"{package} marker does not match container Pythons (3.8-3.10)"
+
             # Check that exactly the container version is pinned
-            assert expected_version in specifier, (
-                f"{package} specifier {specifier} does not include container version {expected_version}"
-            )
+            assert (
+                expected_version in specifier
+            ), f"{package} specifier {specifier} does not include container version {expected_version}"
 
     def test_pytorch_example_pins(self):
         """Test pytorch example container pins match image versions."""
@@ -159,18 +165,20 @@ class TestContainerPins:
             assert (
                 package in pins
             ), f"{package} container pin not found in {req_file.name}"
-            
+
             specifier, matched_pythons = pins[package]
-            
+
             # Check that the pin applies to container Python versions
-            assert matched_pythons == ["3.8", "3.9", "3.10"], (
-                f"{package} marker does not match container Pythons (3.8-3.10)"
-            )
-            
+            assert matched_pythons == [
+                "3.8",
+                "3.9",
+                "3.10",
+            ], f"{package} marker does not match container Pythons (3.8-3.10)"
+
             # Check that exactly the container version is pinned
-            assert expected_version in specifier, (
-                f"{package} specifier {specifier} does not include container version {expected_version}"
-            )
+            assert (
+                expected_version in specifier
+            ), f"{package} specifier {specifier} does not include container version {expected_version}"
 
     def test_sklearn_template_pins(self):
         """Test sklearn template container pins match image versions."""
@@ -184,7 +192,7 @@ class TestContainerPins:
             assert (
                 package in pins
             ), f"{package} container pin not found in {req_file.name}"
-            
+
             specifier, matched_pythons = pins[package]
             assert matched_pythons == ["3.8", "3.9", "3.10"]
             assert expected_version in specifier
@@ -201,7 +209,7 @@ class TestContainerPins:
             assert (
                 package in pins
             ), f"{package} container pin not found in {req_file.name}"
-            
+
             specifier, matched_pythons = pins[package]
             assert matched_pythons == ["3.8", "3.9", "3.10"]
             assert expected_version in specifier
@@ -218,7 +226,7 @@ class TestContainerPins:
             assert (
                 package in pins
             ), f"{package} container pin not found in {req_file.name}"
-            
+
             specifier, matched_pythons = pins[package]
             assert matched_pythons == ["3.8", "3.9", "3.10"]
             assert expected_version in specifier
@@ -239,11 +247,15 @@ class TestContainerPins:
             content = req_file.read_text()
 
             # Should have at least one line with python_version >= "3.11"
-            has_local = ('python_version >= "3.11"' in content or 
-                        "python_version >= '3.11'" in content)
+            has_local = (
+                'python_version >= "3.11"' in content
+                or "python_version >= '3.11'" in content
+            )
             assert has_local, f"{file_path} missing local (3.11+) pins"
 
             # Should have at least one line with python_version < "3.11"
-            has_container = ('python_version < "3.11"' in content or
-                           "python_version < '3.11'" in content)
+            has_container = (
+                'python_version < "3.11"' in content
+                or "python_version < '3.11'" in content
+            )
             assert has_container, f"{file_path} missing container (<3.11) pins"

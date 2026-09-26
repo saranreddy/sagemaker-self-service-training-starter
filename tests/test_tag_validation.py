@@ -14,23 +14,27 @@ class TestTagKeyValidation:
     @pytest.fixture
     def pipeline_builder(self):
         """Create a minimal pipeline builder for testing."""
-        config = type('Config', (), {
-            'get_artifact_bucket': lambda self, team: 'test-bucket',
-            'get_deployment_tag': lambda self: {'mlctl:deployment': 'test'},
-            'get_required_tags': lambda self: {},
-        })()
-        
+        config = type(
+            "Config",
+            (),
+            {
+                "get_artifact_bucket": lambda self, team: "test-bucket",
+                "get_deployment_tag": lambda self: {"mlctl:deployment": "test"},
+                "get_required_tags": lambda self: {},
+            },
+        )()
+
         ml_config = {
-            'name': 'test-project',
-            'team': 'test-team',
-            'owner': 'test-owner',
-            'framework': 'sklearn',
+            "name": "test-project",
+            "team": "test-team",
+            "owner": "test-owner",
+            "framework": "sklearn",
         }
-        
+
         return PipelineBuilder(
             config=config,
             ml_config=ml_config,
-            region='us-east-1',
+            region="us-east-1",
         )
 
     def test_valid_tag_keys(self, pipeline_builder):

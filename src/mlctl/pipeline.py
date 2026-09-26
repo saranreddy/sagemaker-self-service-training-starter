@@ -464,7 +464,9 @@ class PipelineBuilder:
         if len(key) > 128:
             raise ValueError(f"Tag key exceeds 128 chars: {key}")
         if key.lower().startswith("aws:"):
-            raise ValueError(f"Tag key cannot start with 'aws:' (case-insensitive): {key}")
+            raise ValueError(
+                f"Tag key cannot start with 'aws:' (case-insensitive): {key}"
+            )
         if not re.fullmatch(r"[a-zA-Z0-9 +\-=._:/@]+", key):
             raise ValueError(f"Tag key contains invalid characters: {key}")
 
@@ -580,9 +582,10 @@ class PipelineBuilder:
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
             error_message = e.response["Error"].get("Message", "")
-            
+
             if error_code == "ResourceNotFound" or (
-                error_code == "ValidationException" and "does not exist" in error_message
+                error_code == "ValidationException"
+                and "does not exist" in error_message
             ):
                 sagemaker_client.create_model_package_group(
                     ModelPackageGroupName=group_name,
