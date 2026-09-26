@@ -5,7 +5,7 @@
 [![CI](https://github.com/saranreddy/sagemaker-self-service-training-starter/workflows/CI/badge.svg)](https://github.com/saranreddy/sagemaker-self-service-training-starter/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-> **Note**: This is v0.1.2. The design has been validated via CI and live AWS testing. Please report any issues you encounter.
+> **Note**: This is v0.1.2. Unit tests, offline validation and local example runs are covered by CI. Infrastructure apply/destroy, pipeline creation/submission and smoke-test cleanup have been exercised on a live AWS account (v0.1.1). The SageMaker training → evaluation → quality gate → model registration path has **not yet completed in a live account** (the v0.1.1 run was blocked by a 0 training-instance quota) and is pending a live run. Please report any issues you encounter.
 
 ## Who Is This For?
 
@@ -407,7 +407,7 @@ GitHub Actions runs on every push and PR:
 - Python unit tests (3.9, 3.10, 3.11, 3.12, 3.13)
 - Validate all example projects offline
 - Run sklearn and xgboost examples locally on 3.9 and 3.13
-- PyTorch dry-run dependency resolution test on 3.9 and 3.13
+- PyTorch requirements install, torch↔numpy interop check, and train/evaluate module imports on 3.9 and 3.13 (generates data, runs 1 epoch training and evaluation)
 
 ## Design Decisions
 
@@ -445,10 +445,11 @@ The smoke test (`make smoke`) is designed for **macOS with bash 3.2** (also work
 
 - **Valid AWS credentials** with the following permissions (the **root user** or admin has all of these):
   - Data scientist permissions: `sagemaker:CreatePipeline`, `sagemaker:UpdatePipeline`, `sagemaker:StartPipelineExecution`, `sagemaker:AddTags`, `s3:PutObject`, `iam:PassRole`, `sts:GetCallerIdentity`
+  - Re-submitting to an existing group: `sagemaker:DescribeModelPackageGroup`, `sagemaker:AddTags` on `model-package-group/*`
   - Plus cleanup/verification: `sagemaker:DescribePipeline`, `sagemaker:ListPipelineExecutions`, `sagemaker:StopPipelineExecution`, `sagemaker:DeletePipeline`, `sagemaker:DescribeModelPackageGroup`, `sagemaker:CreateModelPackageGroup`, `sagemaker:ListModelPackages`, `sagemaker:DeleteModelPackage`, `sagemaker:DeleteModelPackageGroup`, `s3:ListBucket`, `s3:GetObject`, `s3:DeleteObject`, `logs:DescribeLogStreams`, `logs:DeleteLogStream`
 - **Deployed infrastructure** (`make apply` must succeed first)
 - **Region us-east-1** (or edit `terraform/terraform.tfvars` to change region; `smoke-test.sh` reads from Terraform outputs)
-- **SageMaker service quotas** for both training and processing jobs must be non-zero for the instance type used (default `ml.m5.large`). In us-east-1, check and request increases via the [AWS Service Quotas console](https://console.aws.amazon.com/servicequotas/home/services/sagemaker/quotas). To use a different instance type: `SMOKE_INSTANCE_TYPE=ml.c5.xlarge make smoke`
+- **SageMaker service quotas** for both training and processing jobs must be non-zero for the instance type used (default `ml.m5.large`). In us-east-1, check and request increases via the [AWS Service Quotas console](https://console.aws.amazon.com/servicequotas/home/services/sagemaker/quotas). To use a different instance type (its training and processing quotas must be > 0): `SMOKE_INSTANCE_TYPE=ml.c5.xlarge make smoke`
 - **~10-15 minutes** for pipeline executions (2 pipelines: one pass with threshold 0.70, one fail with impossible threshold 1.01)
 - **`jq` installed** for JSON parsing of `mlctl submit --output json`
 

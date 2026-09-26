@@ -341,11 +341,8 @@ while [ $ELAPSED -lt $MAX_WAIT ]; do
                     FAILURE_MSG="$FAILURE_MSG"$'\n\n'"⚠️  Account quota issue: $QUOTA_TYPE is 0."
                     FAILURE_MSG="$FAILURE_MSG"$'\n'"   Request a quota increase via AWS Service Quotas console:"
                     FAILURE_MSG="$FAILURE_MSG"$'\n'"   https://console.aws.amazon.com/servicequotas/home/services/sagemaker/quotas"
-                    
-                    # Only suggest SMOKE_INSTANCE_TYPE override for training job errors
-                    if echo "$QUOTA_TYPE" | grep -q "training job usage"; then
-                        FAILURE_MSG="$FAILURE_MSG"$'\n'"   Or set SMOKE_INSTANCE_TYPE to an instance type with available quota."
-                    fi
+                    FAILURE_MSG="$FAILURE_MSG"$'\n'"   Or set SMOKE_INSTANCE_TYPE to an instance type with available quota"
+                    FAILURE_MSG="$FAILURE_MSG"$'\n'"   (its training and processing quotas must be > 0)."
                 fi
             fi
         fi

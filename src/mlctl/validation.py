@@ -91,9 +91,13 @@ class ProjectValidator:
                 f"[green]✓[/green] Instance type '{instance_type}' is allowed"
             )
         else:
+            allowed_types_list = self.config.org_config.get(
+                "allowed_instance_types", []
+            )
+            allowed_str = ", ".join(allowed_types_list)
             self.errors.append(
                 f"Instance type '{instance_type}' is not in the allowlist. "
-                f"Allowed types: {self.config.org_config.get('allowed_instance_types', [])}"
+                f"Allowed types: {allowed_str}"
             )
             console.print(
                 f"[red]✗[/red] Instance type '{instance_type}' is not allowed"

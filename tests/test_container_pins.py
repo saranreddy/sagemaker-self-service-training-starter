@@ -102,10 +102,8 @@ class TestContainerPins:
                                 break
 
                         if applies_to_container:
-                            # Check for <2 constraint
-                            spec_str = str(req.specifier)
-                            # Check for any form of <2: ",<2", ">=x,<2", or standalone "<2"
-                            if "<2" in spec_str:
+                            # Check for <2 constraint by testing if numpy 2.0.0 is excluded
+                            if not req.specifier.contains("2.0.0", prereleases=True):
                                 has_numpy_lt_2 = True
             except Exception:
                 # Skip unparseable lines

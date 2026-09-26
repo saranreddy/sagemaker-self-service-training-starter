@@ -89,17 +89,17 @@ if aws service-quotas list-service-quotas --service-code sagemaker --region "$RE
         
         quota_name="${instance_type} for ${job_type} job usage"
         
-        # Look up quota by exact name
+        # Look up quota by exact name (JSON output so query runs once across all pages)
         quota_value=$(aws service-quotas list-service-quotas \
             --service-code sagemaker \
             --region "$REGION" \
             --query "Quotas[?QuotaName=='${quota_name}'].Value | [0]" \
-            --output text 2>/dev/null || echo "")
+            --output json 2>/dev/null || echo "")
         
-        if [ -n "$quota_value" ] && [ "$quota_value" != "None" ]; then
-            # Compare as integers (bash 3.2 compatible)
-            quota_int=$(printf "%.0f" "$quota_value" 2>/dev/null)
-            if [ $? -eq 0 ] && [ "$quota_int" -eq 0 ]; then
+        if [ -n "$quota_value" ] && [ "$quota_value" != "null" ]; then
+            # Compare as integers (bash 3.2 compatible, non-fatal conversion)
+            quota_int=$(printf "%.0f" "$quota_value" 2>/dev/null) || quota_int=""
+            if [ "$quota_int" = "0" ]; then
                 echo "⚠️  Warning: SageMaker quota for '${quota_name}' is 0 in region $REGION"
                 echo "   Pipelines using this instance type will fail until you request a quota increase."
                 echo "   Request via: https://console.aws.amazon.com/servicequotas/home/services/sagemaker/quotas"

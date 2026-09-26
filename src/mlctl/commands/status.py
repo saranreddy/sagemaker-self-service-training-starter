@@ -96,7 +96,12 @@ def status(execution_arn: str, project: str):
                 status = step["StepStatus"]
                 started = step.get("StartTime", "N/A")
 
-                table.add_row(step_name, step_type, status, str(started))
+                table.add_row(
+                    escape(step_name),
+                    escape(step_type),
+                    status,
+                    str(started),
+                )
 
                 # Collect FailureReason for failed steps
                 if status == "Failed" and step.get("FailureReason"):
@@ -108,7 +113,7 @@ def status(execution_arn: str, project: str):
             if failed_step_reasons:
                 console.print()
                 for step_name, reason in failed_step_reasons:
-                    console.print(f"[red bold]{step_name} failure:[/red bold]")
+                    console.print(f"[red bold]{escape(step_name)} failure:[/red bold]")
                     console.print(f"  {escape(reason)}")
 
     except Exception as e:
