@@ -4,12 +4,13 @@ import click
 from rich.console import Console
 
 from mlctl.commands import init, validate, run, submit, status, logs, list_projects
+from mlctl import __version__
 
 console = Console()
 
 
 @click.group()
-@click.version_option(version="0.1.0")
+@click.version_option(version=__version__)
 def main():
     """mlctl - Self-service SageMaker training pipelines.
 

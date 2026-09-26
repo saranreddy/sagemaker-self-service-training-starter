@@ -6,6 +6,7 @@ black==24.3.0
 flake8==7.0.0
 mypy==1.9.0
 types-PyYAML==6.0.12.20240311
+packaging==24.0
 setuptools  # Provides distutils shim for Python 3.12+
 pandas<3  # Pin to avoid pandas 3.x breaking changes with sagemaker
 sagemaker>=2.220,<3  # Test oracle only, not runtime dependency

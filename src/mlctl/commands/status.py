@@ -6,6 +6,7 @@ import boto3
 import click
 from rich.console import Console
 from rich.table import Table
+from rich.markup import escape
 
 console = Console()
 
@@ -70,7 +71,7 @@ def status(execution_arn: str, project: str):
 
         if response.get("FailureReason"):
             console.print(
-                f"\n[red bold]Failure Reason:[/red bold]\n{response['FailureReason']}"
+                f"\n[red bold]Failure Reason:[/red bold]\n{escape(response['FailureReason'])}"
             )
 
         steps_response = sagemaker_client.list_pipeline_execution_steps(
@@ -86,15 +87,34 @@ def status(execution_arn: str, project: str):
             table.add_column("Status")
             table.add_column("Started")
 
+            # Collect failed step reasons to print after the table
+            failed_step_reasons = []
+
             for step in steps_response["PipelineExecutionSteps"]:
                 step_name = step["StepName"]
                 step_type = step.get("StepDisplayName", step.get("StepName", "Unknown"))
                 status = step["StepStatus"]
                 started = step.get("StartTime", "N/A")
 
-                table.add_row(step_name, step_type, status, str(started))
+                table.add_row(
+                    escape(step_name),
+                    escape(step_type),
+                    status,
+                    str(started),
+                )
+
+                # Collect FailureReason for failed steps
+                if status == "Failed" and step.get("FailureReason"):
+                    failed_step_reasons.append((step_name, step["FailureReason"]))
 
             console.print(table)
+
+            # Print failed step reasons after the table
+            if failed_step_reasons:
+                console.print()
+                for step_name, reason in failed_step_reasons:
+                    console.print(f"[red bold]{escape(step_name)} failure:[/red bold]")
+                    console.print(f"  {escape(reason)}")
 
     except Exception as e:
         console.print(f"[red]Failed to get execution status: {e}[/red]")

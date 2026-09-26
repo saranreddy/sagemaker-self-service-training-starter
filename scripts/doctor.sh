@@ -66,8 +66,63 @@ else
 fi
 
 echo ""
+
+# Check SageMaker service quotas (warning only, doesn't fail)
+echo "=== SageMaker Service Quotas ==="
+
+QUOTA_WARNINGS=0
+
+# Get region
+REGION=$(aws configure get region 2>/dev/null || echo "us-east-1")
+
+# Check if service-quotas is available
+if aws service-quotas list-service-quotas --service-code sagemaker --region "$REGION" --max-items 1 >/dev/null 2>&1; then
+    # Instance types and job types to check
+    # Format: "instance_type:job_type"
+    declare -a QUOTAS_TO_CHECK=(
+        "ml.m5.large:training"
+        "ml.m5.large:processing"
+    )
+    
+    for quota_spec in "${QUOTAS_TO_CHECK[@]}"; do
+        IFS=':' read -r instance_type job_type <<< "$quota_spec"
+        
+        quota_name="${instance_type} for ${job_type} job usage"
+        
+        # Look up quota by exact name (JSON output so query runs once across all pages)
+        quota_value=$(aws service-quotas list-service-quotas \
+            --service-code sagemaker \
+            --region "$REGION" \
+            --query "Quotas[?QuotaName=='${quota_name}'].Value | [0]" \
+            --output json 2>/dev/null || echo "")
+        
+        if [ -n "$quota_value" ] && [ "$quota_value" != "null" ]; then
+            # Compare as integers (bash 3.2 compatible, non-fatal conversion)
+            quota_int=$(printf "%.0f" "$quota_value" 2>/dev/null) || quota_int=""
+            if [ "$quota_int" = "0" ]; then
+                echo "⚠️  Warning: SageMaker quota for '${quota_name}' is 0 in region $REGION"
+                echo "   Pipelines using this instance type will fail until you request a quota increase."
+                echo "   Request via: https://console.aws.amazon.com/servicequotas/home/services/sagemaker/quotas"
+                QUOTA_WARNINGS=$((QUOTA_WARNINGS + 1))
+            fi
+        fi
+    done
+    
+    if [ $QUOTA_WARNINGS -eq 0 ]; then
+        echo "✓ Default instance type quotas are non-zero"
+    fi
+else
+    echo "⚠️  Note: Unable to check service quotas (access may be restricted or AWS CLI too old)"
+fi
+
+echo ""
+
 if [ $ERRORS -eq 0 ]; then
-    echo "✓ All checks passed"
+    if [ $QUOTA_WARNINGS -gt 0 ]; then
+        echo "✓ All checks passed (with $QUOTA_WARNINGS quota warning(s))"
+    else
+        echo "✓ All checks passed"
+    fi
     exit 0
 else
     echo "✗ $ERRORS check(s) failed"

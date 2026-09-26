@@ -7,6 +7,9 @@ echo ""
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 
+# Allow overriding instance type for testing different quotas
+SMOKE_INSTANCE_TYPE="${SMOKE_INSTANCE_TYPE:-ml.m5.large}"
+
 # Track resources for cleanup
 CREATED_PIPELINES=()
 CREATED_EXECUTIONS=()
@@ -205,14 +208,17 @@ artifact_bucket: $ARTIFACT_BUCKET
 
 frameworks:
   sklearn:
-    default_instance_type: "ml.m5.large"
+    default_instance_type: "$SMOKE_INSTANCE_TYPE"
     version: "1.2-1"
 
-default_instance_type: "ml.m5.large"
+default_instance_type: "$SMOKE_INSTANCE_TYPE"
 
 allowed_instance_types:
   - ml.m5.large
   - ml.m5.xlarge
+  - ml.m5.2xlarge
+  - ml.c5.xlarge
+  - $SMOKE_INSTANCE_TYPE
 
 required_tags:
   Project: sagemaker-self-service-training
@@ -244,7 +250,7 @@ cat > ml.yaml <<EOF
 name: $PROJECT_NAME
 team: smoke-test
 framework: sklearn
-instance_type: ml.m5.large
+instance_type: $SMOKE_INSTANCE_TYPE
 
 data:
   train: s3://$ARTIFACT_BUCKET/smoke-test/iris/train/
@@ -316,7 +322,32 @@ while [ $ELAPSED -lt $MAX_WAIT ]; do
         echo "✓ Pipeline succeeded"
         break
     elif [ "$STATUS" = "Failed" ] || [ "$STATUS" = "Stopped" ]; then
-        fail "Pipeline $STATUS unexpectedly"
+        # Get failure details
+        FAILURE_MSG="Pipeline $STATUS unexpectedly"
+        
+        # Get failed step details
+        FAILED_STEPS=$(aws sagemaker list-pipeline-execution-steps \
+            --pipeline-execution-arn "$EXECUTION_ARN" \
+            --query "PipelineExecutionSteps[?StepStatus=='Failed'].[StepName,FailureReason]" \
+            --output text 2>/dev/null || echo "")
+        
+        if [ -n "$FAILED_STEPS" ]; then
+            FAILURE_MSG="$FAILURE_MSG"$'\n'"Failed steps:"$'\n'"$FAILED_STEPS"
+            
+            # Check for quota limit errors (matches both training and processing)
+            if echo "$FAILED_STEPS" | grep -q "account-level service limit.*is 0 Instances"; then
+                QUOTA_TYPE=$(echo "$FAILED_STEPS" | grep -o "'[^']*for [^ ]* job usage'" | head -1 || echo "")
+                if [ -n "$QUOTA_TYPE" ]; then
+                    FAILURE_MSG="$FAILURE_MSG"$'\n\n'"⚠️  Account quota issue: $QUOTA_TYPE is 0."
+                    FAILURE_MSG="$FAILURE_MSG"$'\n'"   Request a quota increase via AWS Service Quotas console:"
+                    FAILURE_MSG="$FAILURE_MSG"$'\n'"   https://console.aws.amazon.com/servicequotas/home/services/sagemaker/quotas"
+                    FAILURE_MSG="$FAILURE_MSG"$'\n'"   Or set SMOKE_INSTANCE_TYPE to an instance type with available quota"
+                    FAILURE_MSG="$FAILURE_MSG"$'\n'"   (its training and processing quotas must be > 0)."
+                fi
+            fi
+        fi
+        
+        fail "$FAILURE_MSG"
     fi
     
     sleep $SLEEP_INTERVAL
@@ -378,7 +409,7 @@ cat > ml.yaml <<EOF
 name: $PROJECT_NAME
 team: smoke-test
 framework: sklearn
-instance_type: ml.m5.large
+instance_type: $SMOKE_INSTANCE_TYPE
 
 data:
   train: s3://$ARTIFACT_BUCKET/smoke-test/iris/train/

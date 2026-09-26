@@ -457,15 +457,17 @@ class PipelineBuilder:
         Keys must:
         - Be 1-128 characters
         - Contain only letters, numbers, spaces, and + - = . _ : / @
-        - Not start with aws:
+        - Not start with aws: (case-insensitive)
         """
         if not key:
             raise ValueError("Tag key cannot be empty")
         if len(key) > 128:
             raise ValueError(f"Tag key exceeds 128 chars: {key}")
-        if key.startswith("aws:"):
-            raise ValueError(f"Tag key cannot start with 'aws:': {key}")
-        if not re.match(r"^[a-zA-Z0-9 +\-=._:/@]+$", key):
+        if key.lower().startswith("aws:"):
+            raise ValueError(
+                f"Tag key cannot start with 'aws:' (case-insensitive): {key}"
+            )
+        if not re.fullmatch(r"[a-zA-Z0-9 +\-=._:/@]+", key):
             raise ValueError(f"Tag key contains invalid characters: {key}")
 
     def _get_artifact_bucket(self) -> str:
@@ -574,13 +576,27 @@ class PipelineBuilder:
         group_name = f"{self.project_name}-models"
 
         try:
-            sagemaker_client.describe_model_package_group(
+            response = sagemaker_client.describe_model_package_group(
                 ModelPackageGroupName=group_name
             )
+            # Group exists - ensure it has deployment tags for pre-destroy
+            group_arn = response["ModelPackageGroupArn"]
+            sagemaker_client.add_tags(
+                ResourceArn=group_arn,
+                Tags=self._build_tags(),
+            )
         except ClientError as e:
-            if e.response["Error"]["Code"] == "ResourceNotFound":
+            error_code = e.response["Error"]["Code"]
+            error_message = e.response["Error"].get("Message", "")
+
+            if error_code == "ResourceNotFound" or (
+                error_code == "ValidationException"
+                and "does not exist" in error_message
+            ):
                 sagemaker_client.create_model_package_group(
                     ModelPackageGroupName=group_name,
                     ModelPackageGroupDescription=f"Models for {self.project_name}",
                     Tags=self._build_tags(),
                 )
+            else:
+                raise

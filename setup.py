@@ -1,12 +1,25 @@
 """Setup configuration for mlctl."""
 from setuptools import setup, find_packages
+import os
 
-with open("README.md", "r", encoding="utf-8") as fh:
+# Read version from __init__.py (relative to this file)
+version = {}
+init_path = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "src", "mlctl", "__init__.py"
+)
+with open(init_path, "r", encoding="utf-8") as f:
+    for line in f:
+        if line.startswith("__version__"):
+            exec(line, version)
+            break
+
+readme_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "README.md")
+with open(readme_path, "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 setup(
     name="mlctl-sagemaker",
-    version="0.1.1",
+    version=version["__version__"],
     author="SageMaker Self-Service Training Starter Contributors",
     description="CLI for self-service SageMaker training pipelines",
     long_description=long_description,

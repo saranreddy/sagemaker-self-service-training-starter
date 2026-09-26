@@ -10,8 +10,8 @@ variable "project_name" {
   default     = "sagemaker-self-service-training"
 
   validation {
-    condition     = can(regex("^[a-z0-9][a-z0-9-]{1,40}[a-z0-9]$", var.project_name))
-    error_message = "Project name must be 3-42 characters, start and end with alphanumeric, and contain only lowercase letters, numbers, and hyphens."
+    condition     = can(regex("^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$", var.project_name))
+    error_message = "Project name must be 3-40 characters, start and end with alphanumeric, and contain only lowercase letters, numbers, and hyphens."
   }
 }
 

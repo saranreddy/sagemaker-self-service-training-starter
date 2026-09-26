@@ -5,7 +5,7 @@
 [![CI](https://github.com/saranreddy/sagemaker-self-service-training-starter/workflows/CI/badge.svg)](https://github.com/saranreddy/sagemaker-self-service-training-starter/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-> **Note**: This is v0.1.0. The design has been validated via CI (unit tests, schema validation, local runs). The full end-to-end smoke test with live SageMaker API calls is designed for macOS/bash 3.2 and has not yet been executed on a live AWS account. Please report any issues you encounter.
+> **Note**: This is v0.1.2. Unit tests, offline validation and local example runs are covered by CI. Infrastructure apply/destroy, pipeline creation/submission and smoke-test cleanup have been exercised on a live AWS account (v0.1.1). The SageMaker training → evaluation → quality gate → model registration path has **not yet completed in a live account** (the v0.1.1 run was blocked by a 0 training-instance quota) and is pending a live run. Please report any issues you encounter.
 
 ## Who Is This For?
 
@@ -49,7 +49,7 @@ One `ml.yaml` file declares the project. No pipeline code to maintain.
 
 ### For the MLOps Engineer (One-Time Setup)
 
-**Prerequisites**: Terraform 1.5+, AWS CLI v2, AWS credentials, Python 3.9+, `jq`, `make`, `bash` 3.2+
+**Prerequisites**: Terraform 1.5+, AWS CLI v1 or v2, AWS credentials, Python 3.9+, `jq`, `make`, `bash` 3.2+
 
 1. **Use this template on GitHub, then clone and deploy the infrastructure:**
 
@@ -62,7 +62,7 @@ One `ml.yaml` file declares the project. No pipeline code to maintain.
    # Edit terraform/terraform.tfvars if needed, then run 'make apply' again
    # To skip confirmation prompts: make apply AUTO_APPROVE=1
    cd terraform
-   terraform output org_config_yaml > ../org-config.yaml
+   terraform output -raw org_config_yaml > ../org-config.yaml
    ```
 
    **Note**: On first `make apply`, terraform.tfvars is auto-created from the example. The command exits after creation so you can review and edit it. Run `make apply` again to proceed with deployment.
@@ -99,9 +99,11 @@ One `ml.yaml` file declares the project. No pipeline code to maintain.
 
 ### For the Data Scientist
 
-**Prerequisites**: Python 3.9-3.13, AWS CLI v2 configured with credentials, `org-config.yaml` from MLOps
+**Prerequisites**: Python 3.9-3.13, AWS CLI v1 or v2 configured with credentials, `org-config.yaml` from MLOps
 
-**Note**: PyTorch examples require Python ≤3.12 on Intel Mac (no official torch wheels for Intel Mac + Python 3.13). ARM Mac and Linux support Python 3.13.
+**Notes**:
+- PyTorch examples require Python ≤3.12 on Intel Mac (no official torch wheels for Intel Mac + Python 3.13). ARM Mac and Linux support Python 3.13.
+- macOS users running xgboost locally need `brew install libomp`
 
 1. **Install `mlctl`:**
 
@@ -124,7 +126,7 @@ One `ml.yaml` file declares the project. No pipeline code to maintain.
 
    - Edit `ml.yaml`: set S3 data paths, hyperparameters, quality gate
    - Update `train.py` and `evaluate.py` (keep the SageMaker environment variables contract)
-   - Add dependencies to `requirements.txt`
+   - Add dependencies to `requirements.txt` (note: lines with `python_version < "3.11"` run in SageMaker containers and must match container versions; lines with `python_version >= "3.11"` are for local development only)
 
 4. **Validate locally:**
 
@@ -402,9 +404,10 @@ make lint    # flake8 and black (requires passing to merge)
 GitHub Actions runs on every push and PR:
 
 - Terraform fmt/validate/tflint
-- Python unit tests (3.9, 3.10, 3.11, 3.12)
+- Python unit tests (3.9, 3.10, 3.11, 3.12, 3.13)
 - Validate all example projects offline
-- Run sklearn and xgboost examples locally (pytorch skipped due to large torch install)
+- Run sklearn and xgboost examples locally on 3.9 and 3.13
+- PyTorch requirements install, torch↔numpy interop check, and train/evaluate module imports on 3.9 and 3.13 (generates data, runs 1 epoch training and evaluation)
 
 ## Design Decisions
 
@@ -442,9 +445,11 @@ The smoke test (`make smoke`) is designed for **macOS with bash 3.2** (also work
 
 - **Valid AWS credentials** with the following permissions (the **root user** or admin has all of these):
   - Data scientist permissions: `sagemaker:CreatePipeline`, `sagemaker:UpdatePipeline`, `sagemaker:StartPipelineExecution`, `sagemaker:AddTags`, `s3:PutObject`, `iam:PassRole`, `sts:GetCallerIdentity`
+  - Re-submitting to an existing group: `sagemaker:DescribeModelPackageGroup`, `sagemaker:AddTags` on `model-package-group/*`
   - Plus cleanup/verification: `sagemaker:DescribePipeline`, `sagemaker:ListPipelineExecutions`, `sagemaker:StopPipelineExecution`, `sagemaker:DeletePipeline`, `sagemaker:DescribeModelPackageGroup`, `sagemaker:CreateModelPackageGroup`, `sagemaker:ListModelPackages`, `sagemaker:DeleteModelPackage`, `sagemaker:DeleteModelPackageGroup`, `s3:ListBucket`, `s3:GetObject`, `s3:DeleteObject`, `logs:DescribeLogStreams`, `logs:DeleteLogStream`
 - **Deployed infrastructure** (`make apply` must succeed first)
 - **Region us-east-1** (or edit `terraform/terraform.tfvars` to change region; `smoke-test.sh` reads from Terraform outputs)
+- **SageMaker service quotas** for both training and processing jobs must be non-zero for the instance type used (default `ml.m5.large`). In us-east-1, check and request increases via the [AWS Service Quotas console](https://console.aws.amazon.com/servicequotas/home/services/sagemaker/quotas). To use a different instance type (its training and processing quotas must be > 0): `SMOKE_INSTANCE_TYPE=ml.c5.xlarge make smoke`
 - **~10-15 minutes** for pipeline executions (2 pipelines: one pass with threshold 0.70, one fail with impossible threshold 1.01)
 - **`jq` installed** for JSON parsing of `mlctl submit --output json`
 
