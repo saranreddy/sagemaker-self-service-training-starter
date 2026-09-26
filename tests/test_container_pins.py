@@ -114,7 +114,7 @@ class TestContainerPins:
             # Check that exactly the container version is pinned
             assert (
                 expected_version in specifier
-            ), f"{package} specifier {specifier} does not include container version {expected_version}" # noqa: E501
+            ), f"{package} specifier {specifier} does not include container version {expected_version}"  # noqa: E501
 
             # For exact pins, verify no other version satisfies
             if str(specifier).startswith("=="):
@@ -144,7 +144,7 @@ class TestContainerPins:
             # Check that exactly the container version is pinned
             assert (
                 expected_version in specifier
-            ), f"{package} specifier {specifier} does not include container version {expected_version}" # noqa: E501
+            ), f"{package} specifier {specifier} does not include container version {expected_version}"  # noqa: E501
 
     def test_pytorch_example_pins(self):
         """Test pytorch example container pins match image versions."""
@@ -166,7 +166,7 @@ class TestContainerPins:
             # Check that exactly the container version is pinned
             assert (
                 expected_version in specifier
-            ), f"{package} specifier {specifier} does not include container version {expected_version}" # noqa: E501
+            ), f"{package} specifier {specifier} does not include container version {expected_version}"  # noqa: E501
 
     def test_sklearn_template_pins(self):
         """Test sklearn template container pins match image versions."""
