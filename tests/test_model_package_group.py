@@ -46,18 +46,36 @@ def test_ensure_model_package_group_exists(pipeline_builder):
     client = boto3.client("sagemaker", region_name="us-east-1")
     stubber = Stubber(client)
 
-    # Minimal valid response - group exists, so no create needed
+    group_arn = (
+        "arn:aws:sagemaker:us-east-1:123456789012:"
+        "model-package-group/test-project-models"
+    )
+
+    # Group exists, so it returns info
     stubber.add_response(
         "describe_model_package_group",
         {
             "ModelPackageGroupName": "test-project-models",
-            "ModelPackageGroupArn": (
-                "arn:aws:sagemaker:us-east-1:123456789012:"
-                "model-package-group/test-project-models"
-            ),
+            "ModelPackageGroupArn": group_arn,
             "CreationTime": "2026-01-01T00:00:00Z",
             "CreatedBy": {},
             "ModelPackageGroupStatus": "Completed",
+        },
+    )
+
+    # Then add_tags is called to ensure tags are present
+    stubber.add_response(
+        "add_tags",
+        {},
+        expected_params={
+            "ResourceArn": group_arn,
+            "Tags": [
+                {"Key": "Project", "Value": "test-project"},
+                {"Key": "Team", "Value": "test-team"},
+                {"Key": "Owner", "Value": "test-owner"},
+                {"Key": "ManagedBy", "Value": "mlctl"},
+                {"Key": "mlctl:deployment", "Value": "test"},
+            ],
         },
     )
 

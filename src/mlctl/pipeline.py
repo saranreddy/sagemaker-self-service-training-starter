@@ -576,8 +576,14 @@ class PipelineBuilder:
         group_name = f"{self.project_name}-models"
 
         try:
-            sagemaker_client.describe_model_package_group(
+            response = sagemaker_client.describe_model_package_group(
                 ModelPackageGroupName=group_name
+            )
+            # Group exists - ensure it has deployment tags for pre-destroy
+            group_arn = response["ModelPackageGroupArn"]
+            sagemaker_client.add_tags(
+                ResourceArn=group_arn,
+                Tags=self._build_tags(),
             )
         except ClientError as e:
             error_code = e.response["Error"]["Code"]

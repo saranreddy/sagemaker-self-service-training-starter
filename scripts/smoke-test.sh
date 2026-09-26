@@ -218,6 +218,7 @@ allowed_instance_types:
   - ml.m5.xlarge
   - ml.m5.2xlarge
   - ml.c5.xlarge
+  - $SMOKE_INSTANCE_TYPE
 
 required_tags:
   Project: sagemaker-self-service-training
@@ -333,20 +334,18 @@ while [ $ELAPSED -lt $MAX_WAIT ]; do
         if [ -n "$FAILED_STEPS" ]; then
             FAILURE_MSG="$FAILURE_MSG"$'\n'"Failed steps:"$'\n'"$FAILED_STEPS"
             
-            # Check for quota limit errors
+            # Check for quota limit errors (matches both training and processing)
             if echo "$FAILED_STEPS" | grep -q "account-level service limit.*is 0 Instances"; then
-                QUOTA_TYPE=$(echo "$FAILED_STEPS" | grep -o "'[^']*for training job usage'" | head -1 || echo "")
+                QUOTA_TYPE=$(echo "$FAILED_STEPS" | grep -o "'[^']*for [^ ]* job usage'" | head -1 || echo "")
                 if [ -n "$QUOTA_TYPE" ]; then
                     FAILURE_MSG="$FAILURE_MSG"$'\n\n'"⚠️  Account quota issue: $QUOTA_TYPE is 0."
                     FAILURE_MSG="$FAILURE_MSG"$'\n'"   Request a quota increase via AWS Service Quotas console:"
                     FAILURE_MSG="$FAILURE_MSG"$'\n'"   https://console.aws.amazon.com/servicequotas/home/services/sagemaker/quotas"
-                    FAILURE_MSG="$FAILURE_MSG"$'\n'"   Or set SMOKE_INSTANCE_TYPE to an instance type with available quota."
-                fi
-            elif echo "$FAILED_STEPS" | grep -q "account-level service limit.*for processing job usage"; then
-                QUOTA_TYPE=$(echo "$FAILED_STEPS" | grep -o "'[^']*for processing job usage'" | head -1 || echo "")
-                if [ -n "$QUOTA_TYPE" ]; then
-                    FAILURE_MSG="$FAILURE_MSG"$'\n\n'"⚠️  Account quota issue: $QUOTA_TYPE is 0."
-                    FAILURE_MSG="$FAILURE_MSG"$'\n'"   Request a quota increase via AWS Service Quotas console."
+                    
+                    # Only suggest SMOKE_INSTANCE_TYPE override for training job errors
+                    if echo "$QUOTA_TYPE" | grep -q "training job usage"; then
+                        FAILURE_MSG="$FAILURE_MSG"$'\n'"   Or set SMOKE_INSTANCE_TYPE to an instance type with available quota."
+                    fi
                 fi
             fi
         fi

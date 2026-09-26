@@ -50,6 +50,8 @@ class TestContainerPins:
         # Track which packages have container pins and which don't
         container_pins = {}
         unmarked_framework_lines = []
+        has_torch_2_1 = False
+        has_numpy_lt_2 = False
 
         for line in content.strip().split("\n"):
             line = line.strip()
@@ -74,14 +76,37 @@ class TestContainerPins:
 
                         if versions_matched:
                             # Extract the version that the specifier pins to
-                            # We expect exact pins (==) for containers
                             container_pins[package_name] = (
                                 req.specifier,
                                 versions_matched,
                             )
+
+                            # Track torch 2.1.0 for PyTorch
+                            if framework == "pytorch" and package_name == "torch":
+                                if "2.1.0" in req.specifier:
+                                    has_torch_2_1 = True
                     else:
                         # Framework package without marker
                         unmarked_framework_lines.append(line)
+
+                # For PyTorch, check numpy constraint alongside torch
+                if framework == "pytorch" and package_name == "numpy":
+                    if req.marker:
+                        # Check if this applies to container Pythons
+                        applies_to_container = False
+                        for py_version in container_pythons:
+                            env = default_environment()
+                            env["python_version"] = py_version
+                            if req.marker.evaluate(env):
+                                applies_to_container = True
+                                break
+
+                        if applies_to_container:
+                            # Check for <2 constraint
+                            spec_str = str(req.specifier)
+                            # Check for any form of <2: ",<2", ">=x,<2", or standalone "<2"
+                            if "<2" in spec_str:
+                                has_numpy_lt_2 = True
             except Exception:
                 # Skip unparseable lines
                 pass
@@ -91,6 +116,13 @@ class TestContainerPins:
             f"Framework packages must have python_version < '3.11' marker. "
             f"Found unmarked lines: {unmarked_framework_lines}"
         )
+
+        # For PyTorch with torch 2.1.0, require numpy<2 to avoid runtime errors
+        if framework == "pytorch" and has_torch_2_1:
+            assert has_numpy_lt_2, (
+                "PyTorch with torch 2.1.0 requires numpy<2 constraint "
+                "for Python <3.11 to avoid 'Numpy is not available' errors"
+            )
 
         return container_pins
 

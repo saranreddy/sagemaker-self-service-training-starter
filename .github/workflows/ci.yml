@@ -185,8 +185,10 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       
-      - name: Test PyTorch requirements install
+      - name: Test PyTorch requirements install and imports
         working-directory: examples/pytorch-mnist
         run: |
           python -m pip install --upgrade pip
-          pip install --dry-run --only-binary=:all: -r requirements.txt
+          pip install --only-binary=:all: -r requirements.txt
+          python -c "import torch, numpy, sklearn; print(f'torch={torch.__version__} numpy={numpy.__version__} sklearn={sklearn.__version__}'); torch.from_numpy(numpy.zeros(1))"
+          python -c "import train, evaluate"

@@ -5,7 +5,7 @@
 [![CI](https://github.com/saranreddy/sagemaker-self-service-training-starter/workflows/CI/badge.svg)](https://github.com/saranreddy/sagemaker-self-service-training-starter/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-> **Note**: This is v0.1.0. The design has been validated via CI (unit tests, schema validation, local runs). The full end-to-end smoke test with live SageMaker API calls is designed for macOS/bash 3.2 and has not yet been executed on a live AWS account. Please report any issues you encounter.
+> **Note**: This is v0.1.2. The design has been validated via CI and live AWS testing. Please report any issues you encounter.
 
 ## Who Is This For?
 
@@ -448,6 +448,7 @@ The smoke test (`make smoke`) is designed for **macOS with bash 3.2** (also work
   - Plus cleanup/verification: `sagemaker:DescribePipeline`, `sagemaker:ListPipelineExecutions`, `sagemaker:StopPipelineExecution`, `sagemaker:DeletePipeline`, `sagemaker:DescribeModelPackageGroup`, `sagemaker:CreateModelPackageGroup`, `sagemaker:ListModelPackages`, `sagemaker:DeleteModelPackage`, `sagemaker:DeleteModelPackageGroup`, `s3:ListBucket`, `s3:GetObject`, `s3:DeleteObject`, `logs:DescribeLogStreams`, `logs:DeleteLogStream`
 - **Deployed infrastructure** (`make apply` must succeed first)
 - **Region us-east-1** (or edit `terraform/terraform.tfvars` to change region; `smoke-test.sh` reads from Terraform outputs)
+- **SageMaker service quotas** for both training and processing jobs must be non-zero for the instance type used (default `ml.m5.large`). In us-east-1, check and request increases via the [AWS Service Quotas console](https://console.aws.amazon.com/servicequotas/home/services/sagemaker/quotas). To use a different instance type: `SMOKE_INSTANCE_TYPE=ml.c5.xlarge make smoke`
 - **~10-15 minutes** for pipeline executions (2 pipelines: one pass with threshold 0.70, one fail with impossible threshold 1.01)
 - **`jq` installed** for JSON parsing of `mlctl submit --output json`
 
