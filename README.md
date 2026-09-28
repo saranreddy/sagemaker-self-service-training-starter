@@ -26,6 +26,12 @@ With this starter, a data scientist brings a working `train.py` and gets a teste
 - **Streaming feature pipelines**: This is for batch training → evaluation → registry. Feature engineering and real-time inference are out of scope for v0.1.0.
 - **You need deployment automation**: This starter **stops at the model registry** with status `PendingManualApproval`. Deployment is manual or separate.
 
+## Architecture
+
+![AWS architecture diagram showing the flow from MLOps engineer deploying infrastructure with Terraform, to data scientist running mlctl submit, through SageMaker Pipeline execution (TrainModel → EvaluateModel → QualityGateCheck → RegisterModel or QualityGateFailed), with supporting resources like IAM roles, S3 buckets, CloudWatch Logs, and ECR container images](docs/architecture.png)
+
+The diagram is generated from `docs/architecture.py` (requires `pip install diagrams` and Graphviz; running `python docs/architecture.py` writes `architecture.png` next to the script).
+
 ## What You Get
 
 ### For Data Scientists
